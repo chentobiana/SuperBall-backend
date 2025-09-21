@@ -1,0 +1,12 @@
+{
+    "name": "superball-backend",
+    "private": true,
+    "version": "0.0.1",
+    "scripts": {
+      "dev": "uvicorn app.main:app --reload --port 8000",
+      "staging": "uvicorn app.main:app --reload --env-file .env.staging --port 8000",
+      "prod": "uvicorn app.main:app --reload --env-file .env.production --port 8000",
+      "expose": "ngrok http 8000"
+    }
+  }
+  

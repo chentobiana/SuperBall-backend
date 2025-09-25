@@ -5,6 +5,7 @@ import uuid
 from typing import Dict, List, Tuple, Optional
 
 from fastapi import WebSocket
+from app.services.game_service import GameService
 
 
 class MatchmakingManager:
@@ -14,6 +15,7 @@ class MatchmakingManager:
         self._queue: List[Tuple[str, str]] = []  # (uniq_id, name)
         self._connections: Dict[str, WebSocket] = {}
         self._lock = asyncio.Lock()
+        self._game_service = GameService()
 
     async def register_connection(self, uniq_id: str, websocket: WebSocket) -> None:
         async with self._lock:
@@ -50,7 +52,17 @@ class MatchmakingManager:
                         self._queue.pop(j)
                         self._queue.pop(i)
 
-                        game_session_id = str(uuid.uuid4())
+                        # Create actual game session in database
+                        try:
+                            game_session = await self._game_service.create_game_session(
+                                p1_id, p1_name, p2_id, p2_name
+                            )
+                            game_session_id = game_session.id or str(game_session._id)
+                        except Exception as e:
+                            # If game creation fails, put players back in queue
+                            self._queue.append((p1_id, p1_name))
+                            self._queue.append((p2_id, p2_name))
+                            return None
 
                         # Send notifications outside the lock to avoid blocking others
                         asyncio.create_task(
@@ -60,6 +72,7 @@ class MatchmakingManager:
                                 p1_name,
                                 p2_id,
                                 p2_name,
+                                your_turn=True,  # Player 1 starts
                             )
                         )
                         asyncio.create_task(
@@ -69,7 +82,7 @@ class MatchmakingManager:
                                 p2_name,
                                 p1_id,
                                 p1_name,
-                                your_turn=True,
+                                your_turn=False,  # Player 2 waits
                             )
                         )
 

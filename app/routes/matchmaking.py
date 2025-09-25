@@ -47,13 +47,19 @@ async def matchmaking_ws(websocket: WebSocket):
             return
 
         await matchmaking_manager.register_connection(uniq_id, websocket)
+        
+        # Join the matchmaking queue when connecting via WebSocket
+        await matchmaking_manager.join_queue(uniq_id, name)
 
         # After connection, try to match in case a counterpart already queued
         await matchmaking_manager.try_match()
 
         # Keep the connection alive; ignore incoming messages for now
         while True:
-            await websocket.receive_text()
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
 
     except WebSocketDisconnect:
         pass

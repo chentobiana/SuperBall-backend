@@ -61,10 +61,20 @@ class GameService:
             raise ValueError("Not your turn")
 
         # Validate player has moves left
-        moves_left = (game.player1_moves_left if game.player1_id == uniqId
+        moves_left_before = (game.player1_moves_left if game.player1_id == uniqId
                       else game.player2_moves_left)
-        if moves_left <= 0:
+        if moves_left_before <= 0:
             raise ValueError("No moves left")
+
+        # Consume one move regardless of result
+        if game.player1_id == uniqId:
+            game.player1_moves_left -= 1
+            current_score = game.player1_score
+            moves_left_after = game.player1_moves_left
+        else:
+            game.player2_moves_left -= 1
+            current_score = game.player2_score
+            moves_left_after = game.player2_moves_left
 
         # Validate position
         if not (0 <= x < 7 and 0 <= y < 8):
@@ -82,17 +92,35 @@ class GameService:
         exploded_positions = self._get_connected_blocks(game_board, x, y, clicked_color)
         
         if len(exploded_positions) < 3:
-            # If no valid match, return current state without changes
-            moves_left = (game.player1_moves_left if game.player1_id == uniqId 
-                         else game.player2_moves_left)
-            current_score = (game.player1_score if game.player1_id == uniqId 
-                           else game.player2_score)
-            
+            # No valid match: only the move was consumed and turn logic may switch
+            # Check if turn should switch (2 moves per player)
+            if moves_left_after == 0:
+                if game.current_player_id == game.player1_id:
+                    game.current_player_id = game.player2_id
+                    game.player2_moves_left = 2
+                else:
+                    game.current_player_id = game.player1_id
+                    game.player1_moves_left = 2
+                    game.round += 1
+
+            # Persist state
+            await self.game_repo.update_game(game_id, {
+                "board": game.board,
+                "player1_score": game.player1_score,
+                "player2_score": game.player2_score,
+                "player1_moves_left": game.player1_moves_left,
+                "player2_moves_left": game.player2_moves_left,
+                "player1_bombs": game.player1_bombs,
+                "player2_bombs": game.player2_bombs,
+                "current_player_id": game.current_player_id,
+                "round": game.round
+            })
+
             return MoveResponse(
                 score_gained=0,
                 total_score=current_score,
                 round=game.round,
-                moves_left=moves_left,
+                moves_left=moves_left_after,
                 board=game.board,
                 exploded=[],
                 fallen=[],
@@ -144,24 +172,22 @@ class GameService:
             cascade_new = game_board.fill_empty_spaces()
             cascaded_new_blocks.extend(cascade_new)
         
-        # Update game state (scores/moves/bombs)
+        # Update game state (scores/bombs). Moves already consumed above.
         if game.player1_id == uniqId:
             game.player1_score += total_score_gained
-            game.player1_moves_left -= 1
             if bomb_bonus:
                 game.player1_bombs += 1
             current_score = game.player1_score
-            moves_left = game.player1_moves_left
+            moves_left_after = game.player1_moves_left
         else:
             game.player2_score += total_score_gained
-            game.player2_moves_left -= 1
             if bomb_bonus:
                 game.player2_bombs += 1
             current_score = game.player2_score
-            moves_left = game.player2_moves_left
+            moves_left_after = game.player2_moves_left
         
         # Check if turn should switch (2 moves per player)
-        if moves_left == 0:
+        if moves_left_after == 0:
             # Switch to other player
             if game.current_player_id == game.player1_id:
                 game.current_player_id = game.player2_id
@@ -198,7 +224,7 @@ class GameService:
             score_gained=total_score_gained,
             total_score=current_score,
             round=game.round,
-            moves_left=moves_left,
+            moves_left=moves_left_after,
             board=game.board,
             exploded=all_exploded,
             fallen=all_fallen,

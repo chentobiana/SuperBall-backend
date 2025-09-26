@@ -19,9 +19,12 @@ class LoginRequest(BaseModel):
 
 
 class LoginResponse(BaseModel):
+    """Minimal login response aligned with Unity flow.
+
+    Returns only uniqId and name to keep the contract simple.
+    """
+    uniqId: str
     name: str
-    coins: int
-    trophies: int
 
 
 @router.post("/login-or-register", response_model=LoginResponse)
@@ -32,9 +35,8 @@ async def login_or_register(user_data: LoginRequest, user_repo: UserRepository =
         if existing_user:
             await user_repo.update_last_login(user_data.uniqId)
             return {
+                "uniqId": user_data.uniqId,
                 "name": existing_user.name,
-                "coins": existing_user.coins,
-                "trophies": existing_user.lives
             }
         else:
             new_user = await user_repo.create_user(
@@ -42,9 +44,8 @@ async def login_or_register(user_data: LoginRequest, user_repo: UserRepository =
             )
             await user_repo.update_last_login(user_data.uniqId)
             return {
+                "uniqId": user_data.uniqId,
                 "name": new_user.name,
-                "coins": new_user.coins,
-                "trophies": new_user.lives
             }
 
     except Exception as e:

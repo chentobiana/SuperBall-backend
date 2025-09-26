@@ -53,7 +53,13 @@ class GameRepository:
             from bson import ObjectId
             collection = self.collection
             
-            game_doc = await collection.find_one({"_id": ObjectId(game_id)})
+            try:
+                oid = ObjectId(game_id)
+            except Exception:
+                logger.warning(f"Invalid ObjectId received: {game_id}")
+                return None
+
+            game_doc = await collection.find_one({"_id": oid})
             if game_doc:
                 game_doc["_id"] = str(game_doc["_id"])
                 return GameSession(**game_doc)
@@ -64,15 +70,15 @@ class GameRepository:
             logger.error(f"Error finding game by id {game_id}: {e}")
             return None
     
-    async def find_by_player(self, player_uniq_id: str, status: Optional[GameStatus] = None) -> List[GameSession]:
+    async def find_by_player(self, uniqId: str, status: Optional[GameStatus] = None) -> List[GameSession]:
         """Find games by player ID"""
         try:
             collection = self.collection
             
             query = {
                 "$or": [
-                    {"player1_id": player_uniq_id},
-                    {"player2_id": player_uniq_id}
+                    {"player1_id": uniqId},
+                    {"player2_id": uniqId}
                 ]
             }
             
@@ -89,7 +95,7 @@ class GameRepository:
             return games
             
         except Exception as e:
-            logger.error(f"Error finding games for player {player_uniq_id}: {e}")
+            logger.error(f"Error finding games for player {uniqId}: {e}")
             return []
     
     async def update_game(self, game_id: str, update_data: dict) -> Optional[GameSession]:
@@ -101,15 +107,19 @@ class GameRepository:
             # Add updated_at timestamp
             update_data["updated_at"] = datetime.utcnow()
             
+            try:
+                oid = ObjectId(game_id)
+            except Exception:
+                logger.warning(f"Invalid ObjectId on update: {game_id}")
+                return None
+
             result = await collection.update_one(
-                {"_id": ObjectId(game_id)},
+                {"_id": oid},
                 {"$set": update_data}
             )
             
-            if result.modified_count > 0:
-                return await self.find_by_id(game_id)
-            
-            return None
+            # Always return the current document, even if nothing changed
+            return await self.find_by_id(game_id)
             
         except Exception as e:
             logger.error(f"Error updating game {game_id}: {e}")

@@ -200,7 +200,7 @@ class MoveRequest(BaseModel):
     x: int
     y: int
     game_id: str
-    player_uniq_id: str
+    uniqId: str
 
 
 class MoveResponse(BaseModel):

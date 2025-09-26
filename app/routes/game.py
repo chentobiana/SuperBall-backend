@@ -1,7 +1,7 @@
 import random
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from pydantic import BaseModel
-from typing import Dict
+from typing import Dict, List
 from app.models.game import MoveRequest, MoveResponse, GameSession
 from app.services.game_service import GameService
 import logging
@@ -16,23 +16,43 @@ router = APIRouter(prefix="/game", tags=["game"])
 # WebSocket connections manager
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
+        self.active_connections: Dict[str, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, game_id: str):
         await websocket.accept()
-        self.active_connections[game_id] = websocket
+        self.active_connections.setdefault(game_id, []).append(websocket)
+        logger.info(f"[WS] Player connected to game {game_id}. Total connections: {len(self.active_connections[game_id])}")
 
     def disconnect(self, game_id: str):
         if game_id in self.active_connections:
-            del self.active_connections[game_id]
+            sockets = [ws for ws in self.active_connections[game_id] if not ws.client_state.name == "DISCONNECTED"]
+            before = len(self.active_connections[game_id])
+            if sockets:
+                self.active_connections[game_id] = sockets
+                after = len(sockets)
+                logger.info(f"[WS] Disconnected sockets cleaned for {game_id}. Before={before}, After={after}")
+            else:
+                del self.active_connections[game_id]
+                logger.info(f"[WS] All sockets disconnected from game {game_id}")
 
     async def send_personal_message(self, message: dict, game_id: str):
+        """שולח הודעה לכל השחקנים המחוברים ל־game_id"""
         if game_id in self.active_connections:
-            try:
-                await self.active_connections[game_id].send_text(json.dumps(message))
-            except Exception:
-                # Connection might be closed
-                self.disconnect(game_id)
+            dead: List[WebSocket] = []
+            for ws in list(self.active_connections[game_id]):
+                try:
+                    await ws.send_text(json.dumps(message))
+                    logger.info(f"[WS] Sent message to game {game_id}: {message['type']}")
+                except Exception as e:
+                    logger.error(f"[WS] Failed to send to client in {game_id}: {e}")
+                    dead.append(ws)
+            # Cleanup
+            if dead:
+                self.active_connections[game_id] = [ws for ws in self.active_connections[game_id] if ws not in dead]
+                if not self.active_connections[game_id]:
+                    del self.active_connections[game_id]
+                logger.info(f"[WS] Cleaned up {len(dead)} dead sockets for game {game_id}")
+
 
 
 
@@ -51,7 +71,7 @@ class BombMoveRequest(BaseModel):
     x: int
     y: int
     game_id: str
-    player_uniq_id: str
+    uniqId: str
 
 
 COLORS = [
@@ -70,6 +90,11 @@ def generate_board(rows: int = 8, cols: int = 7) -> list[list[str]]:
 
 @router.get("/initial-board", response_model=InitialBoardResponse)
 async def get_initial_board() -> InitialBoardResponse:
+    """Generate a random 7x8 board of color names for the Unity client.
+
+    Note: This endpoint is stateless and only used for client bootstrapping
+    visuals. The authoritative game board lives on the server in GameSession.
+    """
     board = generate_board(8, 7)
     return InitialBoardResponse(finalBoard=board)
 
@@ -79,7 +104,11 @@ async def get_game_info(
     game_id: str,
     game_service: GameService = Depends(get_game_service)
 ):
-    """Get game information including player IDs"""
+    """Get full game information for debugging/UX helpers.
+
+    Returns identifiers, names, whose turn it is, round number, and a compact
+    snapshot of scores/moves/bombs and the numeric board (7x8).
+    """
     try:
         game = await game_service.game_repo.find_by_id(game_id)
         if not game:
@@ -93,7 +122,18 @@ async def get_game_info(
             "player2_name": game.player2_name,
             "current_player_id": game.current_player_id,
             "status": game.status,
-            "round": game.round
+            "round": game.round,
+            "board": game.board,
+            "player1": {
+                "score": game.player1_score,
+                "moves_left": game.player1_moves_left,
+                "bombs": game.player1_bombs,
+            },
+            "player2": {
+                "score": game.player2_score,
+                "moves_left": game.player2_moves_left,
+                "bombs": game.player2_bombs,
+            },
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -112,7 +152,7 @@ async def make_move(
     try:
         response = await game_service.make_move(
             request.game_id,
-            request.player_uniq_id,
+            request.uniqId,
             request.x,
             request.y
         )
@@ -140,7 +180,7 @@ async def use_bomb(
     try:
         response = await game_service.use_bomb(
             request.game_id,
-            request.player_uniq_id,
+            request.uniqId,
             request.x,
             request.y
         )

@@ -13,12 +13,21 @@ def get_user_repo():
 
 
 class JoinQueueRequest(BaseModel):
+    """HTTP payload to join matchmaking queue.
+
+    Unity sends uniqId + name over HTTP as a backup to the WS init message.
+    """
     uniqId: str
     name: str
 
 
 @router.post("/join")
 async def join_matchmaking_queue(payload: JoinQueueRequest, user_repo: UserRepository = Depends(get_user_repo)):
+    """Join the queue and attempt a match.
+
+    This endpoint is idempotent and safe to call alongside the WebSocket
+    initialization. It also best-effort creates a minimal user record.
+    """
     # Ensure user exists (create on first join to simplify flow)
     user = await user_repo.find_by_unique_id(payload.uniqId)
     if not user:
@@ -35,6 +44,11 @@ async def join_matchmaking_queue(payload: JoinQueueRequest, user_repo: UserRepos
 
 @router.websocket("/ws")
 async def matchmaking_ws(websocket: WebSocket):
+    """WebSocket endpoint that registers the player and attempts to match.
+
+    Expected first client message:
+    {"uniqId": "abc123", "name": "PlayerName"}
+    """
     await websocket.accept()
     uniq_id: str | None = None
     try:

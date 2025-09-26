@@ -3,19 +3,28 @@ from __future__ import annotations
 import asyncio
 import uuid
 from typing import Dict, List, Tuple, Optional
+from time import monotonic
 
 from fastapi import WebSocket
 from app.services.game_service import GameService
 
 
 class MatchmakingManager:
-    """In-memory matchmaking manager that pairs players and notifies them via websockets."""
+    """In-memory matchmaking that pairs players and notifies them via WebSockets.
+
+    Notes:
+    - Uses a simple FIFO queue and requires both players to have active sockets.
+    - On match, a `GameSession` is created via `GameService` and both players get
+      a `match_found` message containing the `game_session_id` and `your_turn`.
+    """
 
     def __init__(self) -> None:
-        self._queue: List[Tuple[str, str]] = []  # (uniq_id, name)
+        # (uniq_id, name, joined_at_monotonic)
+        self._queue: List[Tuple[str, str, float]] = []
         self._connections: Dict[str, WebSocket] = {}
         self._lock = asyncio.Lock()
         self._game_service = GameService()
+        self._queue_entry_ttl_seconds: float = 300.0
 
     async def register_connection(self, uniq_id: str, websocket: WebSocket) -> None:
         async with self._lock:
@@ -24,28 +33,45 @@ class MatchmakingManager:
     async def unregister_connection(self, uniq_id: str) -> None:
         async with self._lock:
             self._connections.pop(uniq_id, None)
+            # Best-effort remove from queue as well
+            self._queue = [e for e in self._queue if e[0] != uniq_id]
 
     async def join_queue(self, uniq_id: str, name: str) -> None:
         async with self._lock:
             # Avoid duplicates in queue
-            if not any(u == uniq_id for u, _ in self._queue):
-                self._queue.append((uniq_id, name))
+            if not any(u == uniq_id for u, _, __ in self._queue):
+                self._queue.append((uniq_id, name, monotonic()))
+
+    def _prune_queue_locked(self) -> None:
+        """Remove stale queue entries (no socket or timed out). Must be called with lock held."""
+        now = monotonic()
+        fresh: List[Tuple[str, str, float]] = []
+        for uniq_id, name, joined_at in self._queue:
+            if uniq_id not in self._connections:
+                # Drop entries without an active socket
+                continue
+            if now - joined_at > self._queue_entry_ttl_seconds:
+                # Drop entries waiting too long
+                continue
+            fresh.append((uniq_id, name, joined_at))
+        self._queue = fresh
 
     async def try_match(self) -> Optional[Tuple[str, str, str]]:
-        """Try to match two queued players that both have active websocket connections.
+        """Match two queued players with active sockets.
 
-        Returns a tuple (game_session_id, p1_uniq_id, p2_uniq_id) if matched, else None.
+        Returns (game_session_id, p1_uniq_id, p2_uniq_id) if matched, else None.
         """
         async with self._lock:
             # Need at least two players in queue
+            self._prune_queue_locked()
             if len(self._queue) < 2:
                 return None
 
             # Find first pair that both have sockets connected
             for i in range(len(self._queue)):
                 for j in range(i + 1, len(self._queue)):
-                    p1_id, p1_name = self._queue[i]
-                    p2_id, p2_name = self._queue[j]
+                    p1_id, p1_name, _ = self._queue[i]
+                    p2_id, p2_name, __ = self._queue[j]
 
                     if p1_id in self._connections and p2_id in self._connections:
                         # Remove them from queue by indices (higher index first)

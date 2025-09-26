@@ -9,14 +9,26 @@ logger = logging.getLogger(__name__)
 
 
 class GameService:
-    """Service for handling game logic"""
+    """Service for handling all server-side game rules and persistence.
+
+    Responsibilities:
+    - Create and persist `GameSession` objects
+    - Validate turns, moves left, and board boundaries
+    - Execute explosions, gravity, refills, cascades, and bomb usage
+    - Update scores, turns, bombs, and rounds
+    - Produce `MoveResponse` payloads matching the Unity contract
+    """
 
     def __init__(self):
         self.game_repo = GameRepository()
 
     async def create_game_session(self, player1_id: str, player1_name: str,
                                   player2_id: str, player2_name: str) -> GameSession:
-        """Create a new game session between two players"""
+        """Create a new game session between two players.
+
+        Player 1 always starts with the turn per game rules.
+        Board is initialized as a 7x8 numeric matrix (colors 0..5).
+        """
 
         # Generate initial random board
         board = GameBoard().board
@@ -33,8 +45,11 @@ class GameService:
 
         return await self.game_repo.create_game(game_session)
 
-    async def make_move(self, game_id: str, player_uniq_id: str, x: int, y: int) -> MoveResponse:
-        """Process a player's move"""
+    async def make_move(self, game_id: str, uniqId: str, x: int, y: int) -> MoveResponse:
+        """Process a player's move and return the full `MoveResponse`.
+
+        If the clicked group is < 3, return the current board with score_gained=0.
+        """
 
         # Get game session
         game = await self.game_repo.find_by_id(game_id)
@@ -42,11 +57,11 @@ class GameService:
             raise ValueError("Game not found")
 
         # Validate it's the player's turn
-        if game.current_player_id != player_uniq_id:
+        if game.current_player_id != uniqId:
             raise ValueError("Not your turn")
 
         # Validate player has moves left
-        moves_left = (game.player1_moves_left if game.player1_id == player_uniq_id
+        moves_left = (game.player1_moves_left if game.player1_id == uniqId
                       else game.player2_moves_left)
         if moves_left <= 0:
             raise ValueError("No moves left")
@@ -68,9 +83,9 @@ class GameService:
         
         if len(exploded_positions) < 3:
             # If no valid match, return current state without changes
-            moves_left = (game.player1_moves_left if game.player1_id == player_uniq_id 
+            moves_left = (game.player1_moves_left if game.player1_id == uniqId 
                          else game.player2_moves_left)
-            current_score = (game.player1_score if game.player1_id == player_uniq_id 
+            current_score = (game.player1_score if game.player1_id == uniqId 
                            else game.player2_score)
             
             return MoveResponse(
@@ -129,8 +144,8 @@ class GameService:
             cascade_new = game_board.fill_empty_spaces()
             cascaded_new_blocks.extend(cascade_new)
         
-        # Update game state
-        if game.player1_id == player_uniq_id:
+        # Update game state (scores/moves/bombs)
+        if game.player1_id == uniqId:
             game.player1_score += total_score_gained
             game.player1_moves_left -= 1
             if bomb_bonus:
@@ -145,7 +160,7 @@ class GameService:
             current_score = game.player2_score
             moves_left = game.player2_moves_left
         
-        # Check if turn should switch
+        # Check if turn should switch (2 moves per player)
         if moves_left == 0:
             # Switch to other player
             if game.current_player_id == game.player1_id:
@@ -172,7 +187,7 @@ class GameService:
             "round": game.round
         })
         
-        # Prepare response
+        # Prepare response in the exact schema expected by the client
         all_exploded = [[pos[0], pos[1]] for pos in exploded_positions] + cascaded_explosions
         all_fallen = [{"from": move.from_pos.to_list(), "to": move.to_pos.to_list()} 
                      for move in fallen_moves + cascaded_fallen]
@@ -208,7 +223,7 @@ class GameService:
             # 6+ blocks - exponential bonus
             return base_score * (blocks_count * 2)
     
-    async def use_bomb(self, game_id: str, player_uniq_id: str, x: int, y: int) -> MoveResponse:
+    async def use_bomb(self, game_id: str, uniqId: str, x: int, y: int) -> MoveResponse:
         """Use a bomb at the specified position"""
         
         # Get game session
@@ -217,11 +232,11 @@ class GameService:
             raise ValueError("Game not found")
         
         # Validate it's the player's turn
-        if game.current_player_id != player_uniq_id:
+        if game.current_player_id != uniqId:
             raise ValueError("Not your turn")
         
         # Check if player has bombs
-        bombs_available = (game.player1_bombs if game.player1_id == player_uniq_id 
+        bombs_available = (game.player1_bombs if game.player1_id == uniqId 
                           else game.player2_bombs)
         if bombs_available <= 0:
             raise ValueError("No bombs available")
@@ -242,40 +257,20 @@ class GameService:
         # Calculate score
         score_gained = self._calculate_score(len(bomb_positions)) * 2  # Bomb bonus
         
-        # Apply explosions
+        # Apply explosions then run the common settle loop (gravity + refills + cascades)
         game_board.explode_blocks(bomb_positions)
-        
-        # Apply gravity and fill spaces (same logic as regular move)
-        fallen_moves = game_board.apply_gravity()
-        new_blocks = game_board.fill_empty_spaces()
-        
-        # Handle cascading matches
-        cascaded_explosions = []
-        cascaded_fallen = []
-        cascaded_new_blocks = []
-        total_score_gained = score_gained
-        
-        while True:
-            matches = game_board.find_matches()
-            if not matches:
-                break
-            
-            all_match_positions = []
-            for match in matches:
-                all_match_positions.extend(match)
-            
-            cascaded_explosions.extend([[pos[0], pos[1]] for pos in all_match_positions])
-            game_board.explode_blocks(all_match_positions)
-            total_score_gained += self._calculate_score(len(all_match_positions))
-            
-            cascade_fallen = game_board.apply_gravity()
-            cascaded_fallen.extend(cascade_fallen)
-            
-            cascade_new = game_board.fill_empty_spaces()
-            cascaded_new_blocks.extend(cascade_new)
+        (
+            fallen_moves,
+            new_blocks,
+            cascaded_explosions,
+            cascaded_fallen,
+            cascaded_new_blocks,
+            cascade_score
+        ) = self._settle_board(game_board)
+        total_score_gained = score_gained + cascade_score
         
         # Update game state
-        if game.player1_id == player_uniq_id:
+        if game.player1_id == uniqId:
             game.player1_score += total_score_gained
             game.player1_bombs -= 1
             game.player1_moves_left -= 1
@@ -332,10 +327,48 @@ class GameService:
             new_blocks=all_new_blocks
         )
     
+    def _settle_board(self, game_board: GameBoard):
+        """Run gravity + refill + cascading matches until stable.
+
+        Returns: (fallen_moves, new_blocks, cascaded_explosions, cascaded_fallen, cascaded_new_blocks, cascade_score)
+        """
+        # First gravity + refill after the initial explosion
+        fallen_moves = game_board.apply_gravity()
+        new_blocks = game_board.fill_empty_spaces()
+        
+        cascaded_explosions = []
+        cascaded_fallen = []
+        cascaded_new_blocks = []
+        cascade_score = 0
+        
+        while True:
+            matches = game_board.find_matches()
+            if not matches:
+                break
+            all_match_positions = []
+            for match in matches:
+                all_match_positions.extend(match)
+            cascaded_explosions.extend([[pos[0], pos[1]] for pos in all_match_positions])
+            game_board.explode_blocks(all_match_positions)
+            cascade_score += self._calculate_score(len(all_match_positions))
+            cascade_fallen = game_board.apply_gravity()
+            cascaded_fallen.extend(cascade_fallen)
+            cascade_new = game_board.fill_empty_spaces()
+            cascaded_new_blocks.extend(cascade_new)
+        
+        return (
+            fallen_moves,
+            new_blocks,
+            cascaded_explosions,
+            cascaded_fallen,
+            cascaded_new_blocks,
+            cascade_score,
+        )
+    
     async def get_game_state(self, game_id: str) -> Optional[GameSession]:
         """Get current game state"""
         return await self.game_repo.find_by_id(game_id)
     
-    async def get_player_games(self, player_uniq_id: str) -> List[GameSession]:
+    async def get_player_games(self, uniqId: str) -> List[GameSession]:
         """Get all games for a player"""
-        return await self.game_repo.find_by_player(player_uniq_id, GameStatus.IN_PROGRESS)
+        return await self.game_repo.find_by_player(uniqId, GameStatus.IN_PROGRESS)

@@ -6,7 +6,7 @@ from enum import Enum
 
 class BlockColor(str, Enum):
     PURPLE = "purple"
-    GREEN = "green" 
+    GREEN = "green"
     BLUE = "blue"
     YELLOW = "yellow"
     RED = "red"
@@ -209,7 +209,7 @@ class MoveResponse(BaseModel):
     total_score: int
     round: int
     moves_left: int
-    board: List[List[int]]
+    board: List[List[str]]
     exploded: List[List[int]]
     fallen: List[dict]
     new_blocks: List[dict]

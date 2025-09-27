@@ -15,7 +15,7 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    pass
+    name: Optional[str] = None
 
 
 class UserInDB(UserBase):
@@ -49,6 +49,7 @@ class UserResponse(UserBase):
 
 class UserUpdate(BaseModel):
     """Model for updating user data"""
+    name: Optional[str] = None
     username: Optional[str] = None
     email: Optional[str] = None
     level: Optional[int] = None

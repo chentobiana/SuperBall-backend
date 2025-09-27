@@ -113,8 +113,7 @@ async def get_game_info(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Game creation is now handled by matchmaking service
-# Use /matchmaking/join to find opponents and create games automatically
+# Game creation is now handled by matchmaking service over WebSocket
 
 
 @router.post("/move", response_model=MoveResponse)

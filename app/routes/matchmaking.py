@@ -1,45 +1,10 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from app.database.user_repository import UserRepository
 from app.services.matchmaking import matchmaking_manager
 
 
 router = APIRouter(prefix="/matchmaking", tags=["matchmaking"])
-
-
-def get_user_repo():
-    return UserRepository()
-
-
-class JoinQueueRequest(BaseModel):
-    """HTTP payload to join matchmaking queue.
-
-    Unity sends uniqId + name over HTTP as a backup to the WS init message.
-    """
-    uniqId: str
-    name: str
-
-
-@router.post("/join")
-async def join_matchmaking_queue(payload: JoinQueueRequest, user_repo: UserRepository = Depends(get_user_repo)):
-    """Join the queue and attempt a match.
-
-    This endpoint is idempotent and safe to call alongside the WebSocket
-    initialization. It also best-effort creates a minimal user record.
-    """
-    # Ensure user exists (create on first join to simplify flow)
-    user = await user_repo.find_by_unique_id(payload.uniqId)
-    if not user:
-        # Best-effort create minimal user
-        from app.models.user import UserCreate
-        user = await user_repo.create_user(UserCreate(uniqId=payload.uniqId))
-
-    await matchmaking_manager.join_queue(payload.uniqId, payload.name)
-
-    # Try to match immediately (best-effort)
-    await matchmaking_manager.try_match()
-    return {"status": "queued"}
 
 
 @router.websocket("/ws")

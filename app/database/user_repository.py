@@ -42,6 +42,7 @@ class UserRepository:
             new_user = UserInDB(
                 uniqId=user_data.uniqId,
                 created_at=datetime.utcnow(),
+                name=user_data.name if user_data.name else None,
             )
 
             # Convert to dict for MongoDB

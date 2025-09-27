@@ -121,7 +121,7 @@ class GameService:
                 total_score=current_score,
                 round=game.round,
                 moves_left=moves_left_after,
-                board=game.board,
+                board=self._board_to_colors(game.board),
                 exploded=[],
                 fallen=[],
                 new_blocks=[]
@@ -225,7 +225,7 @@ class GameService:
             total_score=current_score,
             round=game.round,
             moves_left=moves_left_after,
-            board=game.board,
+            board=self._board_to_colors(game.board),
             exploded=all_exploded,
             fallen=all_fallen,
             new_blocks=all_new_blocks
@@ -390,6 +390,16 @@ class GameService:
             cascaded_new_blocks,
             cascade_score,
         )
+
+    @staticmethod
+    def _board_to_colors(board: list[list[int]]) -> list[list[str]]:
+        """Convert numeric board (0..5) to color names as strings.
+
+        Uses the ordering of BlockColor enum used throughout the service.
+        """
+        from app.models.game import BlockColor
+        palette = [c.value for c in list(BlockColor)[:6]]
+        return [[palette[val] if 0 <= val < len(palette) else "empty" for val in row] for row in board]
     
     async def get_game_state(self, game_id: str) -> Optional[GameSession]:
         """Get current game state"""

@@ -22,7 +22,7 @@ class UserInDB(UserBase):
     id: Optional[str] = Field(None, alias="_id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None
-    name: str  # Player name (set during creation, not auto-generated on read)
+    name: str  # Player name (required field)
 
     # Game data
     level: int = 1

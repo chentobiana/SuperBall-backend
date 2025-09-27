@@ -70,20 +70,17 @@ class GameService:
             raise ValueError("Not your turn")
 
         # Validate player has moves left
-        moves_left_before = (game.player1_moves_left if game.player1_id == uniqId
-                      else game.player2_moves_left)
+        moves_left_before = (
+            game.player1_moves_left if game.player1_id == uniqId else game.player2_moves_left
+        )
         if moves_left_before <= 0:
             raise ValueError("No moves left")
 
-        # Consume one move regardless of result
+        # Do NOT consume a move yet; only after a valid explosion
         if game.player1_id == uniqId:
-            game.player1_moves_left -= 1
             current_score = game.player1_score
-            moves_left_after = game.player1_moves_left
         else:
-            game.player2_moves_left -= 1
             current_score = game.player2_score
-            moves_left_after = game.player2_moves_left
 
         # Validate position
         if not (0 <= x < 7 and 0 <= y < 8):
@@ -101,18 +98,16 @@ class GameService:
         exploded_positions = self._get_connected_blocks(game_board, x, y, clicked_color)
         
         if len(exploded_positions) < 3:
-            # No valid match: only the move was consumed and turn logic may switch
-            # Check if turn should switch (2 moves per player)
-            if moves_left_after == 0:
-                if game.current_player_id == game.player1_id:
-                    game.current_player_id = game.player2_id
-                    game.player2_moves_left = 2
-                else:
-                    game.current_player_id = game.player1_id
-                    game.player1_moves_left = 2
-                    game.round += 1
+            # No valid match: do not consume move and do not switch turn
+            # Ensure there is at least one possible move; regenerate silently if needed
+            board_regenerated = False
+            game_board_after = GameBoard(game.board)
+            if not game_board_after.has_possible_moves():
+                game_board_after.regenerate_board()
+                game.board = game_board_after.board
+                board_regenerated = True
 
-            # Persist state
+            # Persist state (board may have changed)
             await self.game_repo.update_game(game_id, {
                 "board": game.board,
                 "player1_score": game.player1_score,
@@ -122,18 +117,19 @@ class GameService:
                 "player1_bombs": game.player1_bombs,
                 "player2_bombs": game.player2_bombs,
                 "current_player_id": game.current_player_id,
-                "round": game.round
+                "round": game.round,
             })
 
             return MoveResponse(
                 score_gained=0,
                 total_score=current_score,
                 round=game.round,
-                moves_left=moves_left_after,
+                moves_left=moves_left_before,
                 board=game.board,
                 exploded=[],
                 fallen=[],
-                new_blocks=[]
+                new_blocks=[],
+                board_regenerated=board_regenerated,
             )
         
         # Calculate score
@@ -181,19 +177,25 @@ class GameService:
             cascade_new = game_board.fill_empty_spaces()
             cascaded_new_blocks.extend(cascade_new)
         
-        # Update game state (scores/bombs). Moves already consumed above.
+        # Consume move now that a valid explosion occurred
+        if game.player1_id == uniqId:
+            game.player1_moves_left -= 1
+            moves_left_after = game.player1_moves_left
+        else:
+            game.player2_moves_left -= 1
+            moves_left_after = game.player2_moves_left
+
+        # Update game state (scores/bombs)
         if game.player1_id == uniqId:
             game.player1_score += total_score_gained
             if bomb_bonus:
                 game.player1_bombs += 1
             current_score = game.player1_score
-            moves_left_after = game.player1_moves_left
         else:
             game.player2_score += total_score_gained
             if bomb_bonus:
                 game.player2_bombs += 1
             current_score = game.player2_score
-            moves_left_after = game.player2_moves_left
         
         # Check if turn should switch (2 moves per player)
         if moves_left_after == 0:
@@ -214,6 +216,12 @@ class GameService:
             turn_seconds = 30
         game.current_turn_deadline = datetime.utcnow() + timedelta(seconds=turn_seconds)
         
+        # Ensure next board has possible moves; regenerate if needed
+        board_regenerated = False
+        if not game_board.has_possible_moves():
+            game_board.regenerate_board()
+            board_regenerated = True
+
         # Update board
         game.board = game_board.board
         
@@ -246,10 +254,11 @@ class GameService:
             board=game.board,
             exploded=all_exploded,
             fallen=all_fallen,
-            new_blocks=all_new_blocks
+            new_blocks=all_new_blocks,
+            board_regenerated=board_regenerated,
         )
     
-    def _get_connected_blocks(self, game_board: GameBoard, x: int, y: int, color: int) -> List[Tuple[int, int]]:
+    def _get_connected_blocks(self, game_board: GameBoard, x: int, y: int, color: str) -> List[Tuple[int, int]]:
         """Get all connected blocks of the same color using flood fill"""
         visited = set()
         return game_board._flood_fill(x, y, color, visited)
@@ -294,9 +303,12 @@ class GameService:
         bomb_positions = [(x, y)]
         bomb_positions.extend(game_board.get_neighbors(x, y))
         
-        # Remove positions that are already empty
-        bomb_positions = [(bx, by) for bx, by in bomb_positions 
-                         if game_board.board[by][bx] != -1]
+        # Remove positions that are already empty (unified sentinel)
+        bomb_positions = [
+            (bx, by)
+            for bx, by in bomb_positions
+            if game_board.board[by][bx] != "Empty"
+        ]
         
         # Calculate score
         score_gained = self._calculate_score(len(bomb_positions)) * 2  # Bomb bonus
@@ -357,8 +369,10 @@ class GameService:
         all_exploded = [[pos[0], pos[1]] for pos in bomb_positions] + cascaded_explosions
         all_fallen = [{"from": move.from_pos.to_list(), "to": move.to_pos.to_list()} 
                      for move in fallen_moves + cascaded_fallen]
-        all_new_blocks = [{"pos": block.pos.to_list(), "value": block.value.value} 
-                         for block in new_blocks + cascaded_new_blocks]
+        all_new_blocks = [
+            {"pos": block.pos.to_list(), "value": block.value}
+            for block in new_blocks + cascaded_new_blocks
+        ]
         
         return MoveResponse(
             score_gained=total_score_gained,

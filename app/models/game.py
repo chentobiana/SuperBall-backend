@@ -60,11 +60,25 @@ class GameBoard:
     """
     def __init__(self, board: Optional[List[List[str]]] = None):
         if board is None:
-            import random
-            palette = [c.value for c in list(BlockColor)[:6]]
-            self.board = [[random.choice(palette) for _ in range(7)] for _ in range(8)]
+            self._generate_board_with_moves()
         else:
             self.board = [row[:] for row in board]  # Deep copy
+
+    def _generate_board_with_moves(self) -> None:
+        """Generate a board that guarantees at least one possible move."""
+        import random
+        palette = [c.value for c in list(BlockColor)[:6]]
+        max_attempts = 100
+        for _ in range(max_attempts):
+            self.board = [[random.choice(palette) for _ in range(7)] for _ in range(8)]
+            if self.has_possible_moves():
+                return
+        # As a last resort, force a simple 3-match
+        self.board = [[random.choice(palette) for _ in range(7)] for _ in range(8)]
+        color = random.choice(palette)
+        self.board[2][2] = color
+        self.board[2][3] = color
+        self.board[2][4] = color
     
     def get_neighbors(self, x: int, y: int) -> List[Tuple[int, int]]:
         """Get hexagonal neighbors for position (x,y)
@@ -107,7 +121,7 @@ class GameBoard:
             for x in range(7):  # Updated for 7 columns
                 if (x, y) not in visited:
                     color = self.board[y][x]
-                    if color == -1:  # Empty space
+                    if color == "Empty":  # Empty space
                         continue
                         
                     group = self._flood_fill(x, y, color, visited)
@@ -115,8 +129,16 @@ class GameBoard:
                         matches.append(group)
         
         return matches
+
+    def has_possible_moves(self) -> bool:
+        """Check if there are any possible moves (groups of 3+ blocks)."""
+        return len(self.find_matches()) > 0
+
+    def regenerate_board(self) -> None:
+        """Regenerate the board to ensure at least one possible move exists."""
+        self._generate_board_with_moves()
     
-    def _flood_fill(self, x: int, y: int, color: int, visited: set) -> List[Tuple[int, int]]:
+    def _flood_fill(self, x: int, y: int, color: str, visited: set) -> List[Tuple[int, int]]:
         """Flood fill to find connected blocks of same color"""
         if (x, y) in visited or self.board[y][x] != color:
             return []
@@ -133,7 +155,7 @@ class GameBoard:
     def explode_blocks(self, positions: List[Tuple[int, int]]) -> None:
         """Remove blocks at given positions"""
         for x, y in positions:
-            self.board[y][x] = -1  # Mark as empty
+            self.board[y][x] = "Empty"  # Unified empty sentinel
     
     def apply_gravity(self) -> List[BlockMove]:
         """Apply gravity and return list of moves made"""
@@ -217,6 +239,7 @@ class MoveResponse(BaseModel):
     exploded: List[List[int]]
     fallen: List[dict]
     new_blocks: List[dict]
+    board_regenerated: bool = False  # True if board was replaced due to no moves
     game_over: bool = False
     winner: Optional[str] = None
 

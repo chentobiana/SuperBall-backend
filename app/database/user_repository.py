@@ -39,10 +39,11 @@ class UserRepository:
         """
         try:
             # Create new user object
+            from app.models.user import generate_player_name
             new_user = UserInDB(
                 uniqId=user_data.uniqId,
                 created_at=datetime.utcnow(),
-                name=user_data.name if user_data.name else None,
+                name=user_data.name if user_data.name else generate_player_name(),
             )
 
             # Convert to dict for MongoDB

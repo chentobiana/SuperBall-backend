@@ -5,13 +5,13 @@ from enum import Enum
 
 
 class BlockColor(str, Enum):
-    PURPLE = "purple"
-    GREEN = "green"
-    BLUE = "blue"
-    YELLOW = "yellow"
-    RED = "red"
-    PINK = "pink"
-    BOMB = "bomb"
+    PURPLE = "Purple"
+    GREEN = "Green"
+    BLUE = "Blue"
+    YELLOW = "Yellow"
+    RED = "Red"
+    PINK = "Pink"
+    BOMB = "Bomb"
 
 
 class GameStatus(str, Enum):
@@ -56,7 +56,7 @@ class GameBoard:
     """Game board logic - 7x8 hexagonal grid (7 columns, 8 rows)
 
     Board stores color names as strings (e.g., "purple", "green"). Empty cells
-    are marked as the string "empty".
+    are marked as the string "Empty".
     """
     def __init__(self, board: Optional[List[List[str]]] = None):
         if board is None:
@@ -143,12 +143,12 @@ class GameBoard:
             # Get all non-empty blocks in this column
             column_blocks = []
             for y in range(8):  # Updated for 8 rows
-                if self.board[y][x] != "empty":
+                if self.board[y][x] != "Empty":
                     column_blocks.append((y, self.board[y][x]))
             
             # Clear the column
             for y in range(8):  # Updated for 8 rows
-                self.board[y][x] = "empty"
+                self.board[y][x] = "Empty"
             
             # Place blocks at bottom
             for i, (old_y, color) in enumerate(column_blocks):
@@ -170,7 +170,7 @@ class GameBoard:
         
         for x in range(7):  # Updated for 7 columns
             for y in range(7, -1, -1):  # Top to bottom, updated for 8 rows
-                if self.board[y][x] == "empty":
+                if self.board[y][x] == "Empty":
                     color = random.choice([c.value for c in list(BlockColor)[:6]])
                     self.board[y][x] = color
                     new_blocks.append(NewBlock(
@@ -238,6 +238,8 @@ class GameSession(BaseModel):
     player2_bombs: int = 0
     round: int = 1
     status: GameStatus = GameStatus.IN_PROGRESS
+    # Timers
+    current_turn_deadline: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     

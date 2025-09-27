@@ -1,4 +1,5 @@
 from typing import List, Tuple, Optional
+from datetime import datetime, timedelta
 from app.models.game import (
     GameSession, GameBoard, MoveResponse, GameStatus
 )
@@ -43,6 +44,14 @@ class GameService:
             status=GameStatus.IN_PROGRESS
         )
 
+        # Initialize first turn deadline (default 30s if not configured)
+        try:
+            from app.config import settings
+            turn_seconds = int(getattr(settings, "TURN_SECONDS", 30))
+        except Exception:
+            turn_seconds = 30
+        game_session.current_turn_deadline = datetime.utcnow() + timedelta(seconds=turn_seconds)
+
         return await self.game_repo.create_game(game_session)
 
     async def make_move(self, game_id: str, uniqId: str, x: int, y: int) -> MoveResponse:
@@ -81,7 +90,7 @@ class GameService:
             raise ValueError("Invalid position")
 
         # Check if position has a block
-        if game.board[y][x] == "empty":
+        if game.board[y][x] == "Empty":
             raise ValueError("No block at this position")
 
         # Process the move
@@ -197,6 +206,14 @@ class GameService:
                 game.player1_moves_left = 2
                 game.round += 1  # New round when it comes back to player 1
         
+        # Reset/extend turn deadline for the (possibly new) current player
+        try:
+            from app.config import settings
+            turn_seconds = int(getattr(settings, "TURN_SECONDS", 30))
+        except Exception:
+            turn_seconds = 30
+        game.current_turn_deadline = datetime.utcnow() + timedelta(seconds=turn_seconds)
+        
         # Update board
         game.board = game_board.board
         
@@ -210,7 +227,8 @@ class GameService:
             "player1_bombs": game.player1_bombs,
             "player2_bombs": game.player2_bombs,
             "current_player_id": game.current_player_id,
-            "round": game.round
+            "round": game.round,
+            "current_turn_deadline": game.current_turn_deadline,
         })
         
         # Prepare response in the exact schema expected by the client

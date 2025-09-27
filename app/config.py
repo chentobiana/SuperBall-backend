@@ -23,5 +23,10 @@ class Settings:
     USERS_COLLECTION: str = "users"
     GAME_SESSIONS_COLLECTION: str = "game_sessions"
 
+    # Game Rules
+    TOTAL_ROUNDS: int = int(os.getenv("TOTAL_ROUNDS", "5"))
+    TURNS_PER_ROUND: int = int(os.getenv("TURNS_PER_ROUND", "2"))
+    TURN_SECONDS: int = int(os.getenv("TURN_SECONDS", "30"))
+
 
 settings = Settings()

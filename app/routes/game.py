@@ -73,59 +73,6 @@ class BombMoveRequest(BaseModel):
 ## Note: Removed UX-only /initial-board. Clients should call /game/state/{game_id}.
 
 
-@router.get("/game-info/{game_id}")
-async def get_game_info(
-    game_id: str,
-    game_service: GameService = Depends(get_game_service)
-):
-    """Get full game information for debugging/UX helpers.
-
-    Returns identifiers, names, whose turn it is, round number, and a compact
-    snapshot of scores/moves/bombs and the numeric board (7x8).
-    """
-    try:
-        game = await game_service.game_repo.find_by_id(game_id)
-        if not game:
-            raise HTTPException(status_code=404, detail="Game not found")
-        
-        # Pull rules from settings (with defaults)
-        try:
-            from app.config import settings
-            total_rounds = int(getattr(settings, "TOTAL_ROUNDS", 5))
-            turns_per_round = int(getattr(settings, "TURNS_PER_ROUND", 2))
-            turn_seconds = int(getattr(settings, "TURN_SECONDS", 30))
-        except Exception:
-            total_rounds, turns_per_round, turn_seconds = 5, 2, 30
-
-        return {
-            "game_id": game_id,
-            "player1_id": game.player1_id,
-            "player2_id": game.player2_id,
-            "player1_name": game.player1_name,
-            "player2_name": game.player2_name,
-            "current_player_id": game.current_player_id,
-            "status": game.status,
-            "round": game.round,
-            "rules": {
-                "total_rounds": total_rounds,
-                "turns_per_round": turns_per_round,
-                "turn_seconds": turn_seconds,
-            },
-            "current_turn_deadline": game.current_turn_deadline,
-            "board": game.board,
-            "player1": {
-                "score": game.player1_score,
-                "moves_left": game.player1_moves_left,
-            },
-            "player2": {
-                "score": game.player2_score,
-                "moves_left": game.player2_moves_left,
-            },
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # Game creation is now handled by matchmaking service over WebSocket
 
 
@@ -190,12 +137,48 @@ async def get_game_state(
     game_id: str,
     game_service: GameService = Depends(get_game_service)
 ):
-    """Get current game state"""
+    """Get current game state in structured format"""
     try:
         game = await game_service.get_game_state(game_id)
         if not game:
             raise HTTPException(status_code=404, detail="Game not found")
-        return game
+        
+        # Pull rules from settings (with defaults)
+        try:
+            from app.config import settings
+            total_rounds = int(getattr(settings, "TOTAL_ROUNDS", 5))
+            turns_per_round = int(getattr(settings, "TURNS_PER_ROUND", 2))
+            turn_seconds = int(getattr(settings, "TURN_SECONDS", 30))
+        except Exception:
+            total_rounds, turns_per_round, turn_seconds = 5, 2, 30
+
+        return {
+            "game_id": game_id,
+            "player1_id": game.player1_id,
+            "player2_id": game.player2_id,
+            "player1_name": game.player1_name,
+            "player2_name": game.player2_name,
+            "current_player_id": game.current_player_id,
+            "status": game.status,
+            "round": game.round,
+            "rules": {
+                "total_rounds": total_rounds,
+                "turns_per_round": turns_per_round,
+                "turn_seconds": turn_seconds,
+            },
+            "current_turn_deadline": game.current_turn_deadline,
+            "board": game.board,
+            "player1": {
+                "score": game.player1_score,
+                "moves_left": game.player1_moves_left,
+                "bombs": game.player1_bombs,
+            },
+            "player2": {
+                "score": game.player2_score,
+                "moves_left": game.player2_moves_left,
+                "bombs": game.player2_bombs,
+            },
+        }
     except Exception as e:
         logger.error(f"Error getting game state: {e}")
         raise HTTPException(status_code=500, detail=str(e))

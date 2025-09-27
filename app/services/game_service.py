@@ -31,8 +31,9 @@ class GameService:
         Board is initialized as a 7x8 numeric matrix (colors 0..5).
         """
 
-        # Generate initial random board
-        board = GameBoard().board
+        # Generate initial random board (flip to match frontend Y=0 at bottom)
+        temp_board = GameBoard().board
+        board = [temp_board[7-i] for i in range(8)]  # Flip vertically
 
         game_session = GameSession(
             player1_id=player1_id,
@@ -86,26 +87,37 @@ class GameService:
         if not (0 <= x < 7 and 0 <= y < 8):
             raise ValueError("Invalid position")
 
-        # Check if position has a block
+        # Check if position has a block (board now uses frontend coordinates)
         if game.board[y][x] == "Empty":
             raise ValueError("No block at this position")
 
-        # Process the move
-        game_board = GameBoard(game.board)
+        # Process the move (flip board back to internal format for processing)
+        internal_board = [game.board[7-i] for i in range(8)]
+        game_board = GameBoard(internal_board)
         
         # Simulate clicking on the block - for now just explode connected blocks of same color
-        clicked_color = game_board.board[y][x]
-        exploded_positions = self._get_connected_blocks(game_board, x, y, clicked_color)
+        # Convert coordinates back to internal format for processing
+        internal_y = 7 - y
+        clicked_color = game_board.board[internal_y][x]
+        exploded_positions = self._get_connected_blocks(game_board, x, internal_y, clicked_color)
         
         if len(exploded_positions) < 3:
             # No valid match: do not consume move and do not switch turn
+            logger.warning(f"Player {uniqId} clicked ({x},{y}) with color '{clicked_color}' but only found {len(exploded_positions)} connected blocks")
+            
             # Ensure there is at least one possible move; regenerate silently if needed
             board_regenerated = False
-            game_board_after = GameBoard(game.board)
+            # Convert to internal format for processing
+            internal_board_after = [game.board[7-i] for i in range(8)]
+            game_board_after = GameBoard(internal_board_after)
             if not game_board_after.has_possible_moves():
+                logger.info(f"No possible moves found, regenerating board for game {game_id}")
                 game_board_after.regenerate_board()
-                game.board = game_board_after.board
+                # Flip the regenerated board to match frontend coordinates
+                game.board = [game_board_after.board[7-i] for i in range(8)]
                 board_regenerated = True
+            else:
+                logger.info(f"Board still has possible moves, keeping current board for game {game_id}")
 
             # Persist state (board may have changed)
             await self.game_repo.update_game(game_id, {
@@ -222,8 +234,8 @@ class GameService:
             game_board.regenerate_board()
             board_regenerated = True
 
-        # Update board
-        game.board = game_board.board
+        # Update board (flip to match frontend coordinates)
+        game.board = [game_board.board[7-i] for i in range(8)]
         
         # Save game state
         await self.game_repo.update_game(game_id, {
@@ -298,10 +310,12 @@ class GameService:
         if not (0 <= x < 7 and 0 <= y < 8):
             raise ValueError("Invalid position")
         
-        # Get all neighbors + center position
-        game_board = GameBoard(game.board)
-        bomb_positions = [(x, y)]
-        bomb_positions.extend(game_board.get_neighbors(x, y))
+        # Get all neighbors + center position (convert to internal format for processing)
+        internal_board = [game.board[7-i] for i in range(8)]
+        game_board = GameBoard(internal_board)
+        internal_y = 7 - y
+        bomb_positions = [(x, internal_y)]
+        bomb_positions.extend(game_board.get_neighbors(x, internal_y))
         
         # Remove positions that are already empty (unified sentinel)
         bomb_positions = [
@@ -349,8 +363,8 @@ class GameService:
                 game.player1_moves_left = 2
                 game.round += 1
         
-        # Update board
-        game.board = game_board.board
+        # Update board (flip to match frontend coordinates)
+        game.board = [game_board.board[7-i] for i in range(8)]
         
         # Save game state
         await self.game_repo.update_game(game_id, {

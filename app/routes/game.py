@@ -63,10 +63,6 @@ def get_game_service():
     return GameService()
 
 
-class InitialBoardResponse(BaseModel):
-    finalBoard: list[list[str]]
-
-
 class BombMoveRequest(BaseModel):
     x: int
     y: int
@@ -74,29 +70,7 @@ class BombMoveRequest(BaseModel):
     uniqId: str
 
 
-COLORS = [
-    "Purple",
-    "Green",
-    "Blue",
-    "Yellow",
-    "Red",
-    "Pink",
-]
-
-
-def generate_board(rows: int = 8, cols: int = 7) -> list[list[str]]:
-    return [[random.choice(COLORS) for _ in range(cols)] for _ in range(rows)]
-
-
-@router.get("/initial-board", response_model=InitialBoardResponse)
-async def get_initial_board() -> InitialBoardResponse:
-    """Generate a random 7x8 board of color names for the Unity client.
-
-    Note: This endpoint is stateless and only used for client bootstrapping
-    visuals. The authoritative game board lives on the server in GameSession.
-    """
-    board = generate_board(8, 7)
-    return InitialBoardResponse(finalBoard=board)
+## Note: Removed UX-only /initial-board. Clients should call /game/state/{game_id}.
 
 
 @router.get("/game-info/{game_id}")

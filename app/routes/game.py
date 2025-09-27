@@ -90,11 +90,23 @@ async def make_move(
             request.y
         )
 
-        # Notify other player via WebSocket
+        # Notify all players via WebSocket about the move and current turn
         await manager.send_personal_message({
             "type": "opponent_move",
             "data": response.model_dump()
         }, request.game_id)
+        
+        # Also send turn update
+        game = await game_service.get_game_state(request.game_id)
+        if game:
+            await manager.send_personal_message({
+                "type": "turn_update",
+                "current_player_id": game.current_player_id,
+                "current_player_name": game.player1_name if game.current_player_id == game.player1_id else game.player2_name,
+                "round": game.round,
+                "player1_moves_left": game.player1_moves_left,
+                "player2_moves_left": game.player2_moves_left
+            }, request.game_id)
 
         return response
     except ValueError as e:
@@ -118,11 +130,23 @@ async def use_bomb(
             request.y
         )
 
-        # Notify other player via WebSocket
+        # Notify all players via WebSocket about the bomb and current turn
         await manager.send_personal_message({
             "type": "opponent_bomb",
             "data": response.model_dump()
         }, request.game_id)
+        
+        # Also send turn update
+        game = await game_service.get_game_state(request.game_id)
+        if game:
+            await manager.send_personal_message({
+                "type": "turn_update",
+                "current_player_id": game.current_player_id,
+                "current_player_name": game.player1_name if game.current_player_id == game.player1_id else game.player2_name,
+                "round": game.round,
+                "player1_moves_left": game.player1_moves_left,
+                "player2_moves_left": game.player2_moves_left
+            }, request.game_id)
 
         return response
     except ValueError as e:
@@ -206,7 +230,52 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
         while True:
             # Keep connection alive, wait for messages
             data = await websocket.receive_text()
-            # Echo back for now - can be extended for chat or other features
-            await websocket.send_text(f"Message received: {data}")
+            try:
+                # Try to parse incoming message
+                message = json.loads(data)
+                logger.info(f"[WS] Received message in game {game_id}: {message}")
+                
+                # Send back game state info instead of echo
+                game_service = get_game_service()
+                game = await game_service.get_game_state(game_id)
+                if game:
+                    # Pull rules from settings
+                    try:
+                        from app.config import settings
+                        turn_seconds = int(getattr(settings, "TURN_SECONDS", 30))
+                    except Exception:
+                        turn_seconds = 30
+                    
+                    response = {
+                        "type": "game_status",
+                        "current_player_id": game.current_player_id,
+                        "current_player_name": game.player1_name if game.current_player_id == game.player1_id else game.player2_name,
+                        "round": game.round,
+                        "player1": {
+                            "name": game.player1_name,
+                            "score": game.player1_score,
+                            "moves_left": game.player1_moves_left,
+                            "bombs": game.player1_bombs
+                        },
+                        "player2": {
+                            "name": game.player2_name,
+                            "score": game.player2_score,
+                            "moves_left": game.player2_moves_left,
+                            "bombs": game.player2_bombs
+                        },
+                        "turn_deadline": game.current_turn_deadline.isoformat() if game.current_turn_deadline else None,
+                        "turn_seconds": turn_seconds
+                    }
+                    await websocket.send_text(json.dumps(response))
+                else:
+                    await websocket.send_text(json.dumps({"type": "error", "message": "Game not found"}))
+                    
+            except json.JSONDecodeError:
+                # If not valid JSON, send simple acknowledgment
+                await websocket.send_text(json.dumps({"type": "ack", "message": "Message received"}))
+            except Exception as e:
+                logger.error(f"[WS] Error processing message in game {game_id}: {e}")
+                await websocket.send_text(json.dumps({"type": "error", "message": "Failed to process message"}))
+                
     except WebSocketDisconnect:
         manager.disconnect(game_id)

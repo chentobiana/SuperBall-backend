@@ -40,7 +40,7 @@ class BlockMove(BaseModel):
 class NewBlock(BaseModel):
     """Represents a new block that appears"""
     pos: Position
-    value: BlockColor
+    value: str
 
 
 class Player(BaseModel):
@@ -53,12 +53,16 @@ class Player(BaseModel):
 
 
 class GameBoard:
-    """Game board logic - 7x8 hexagonal grid (7 columns, 8 rows)"""
-    def __init__(self, board: Optional[List[List[int]]] = None):
+    """Game board logic - 7x8 hexagonal grid (7 columns, 8 rows)
+
+    Board stores color names as strings (e.g., "purple", "green"). Empty cells
+    are marked as the string "empty".
+    """
+    def __init__(self, board: Optional[List[List[str]]] = None):
         if board is None:
-            # Initialize with random colors (0-5 representing different colors)
             import random
-            self.board = [[random.randint(0, 5) for _ in range(7)] for _ in range(8)]
+            palette = [c.value for c in list(BlockColor)[:6]]
+            self.board = [[random.choice(palette) for _ in range(7)] for _ in range(8)]
         else:
             self.board = [row[:] for row in board]  # Deep copy
     
@@ -139,12 +143,12 @@ class GameBoard:
             # Get all non-empty blocks in this column
             column_blocks = []
             for y in range(8):  # Updated for 8 rows
-                if self.board[y][x] != -1:
+                if self.board[y][x] != "empty":
                     column_blocks.append((y, self.board[y][x]))
             
             # Clear the column
             for y in range(8):  # Updated for 8 rows
-                self.board[y][x] = -1
+                self.board[y][x] = "empty"
             
             # Place blocks at bottom
             for i, (old_y, color) in enumerate(column_blocks):
@@ -166,12 +170,12 @@ class GameBoard:
         
         for x in range(7):  # Updated for 7 columns
             for y in range(7, -1, -1):  # Top to bottom, updated for 8 rows
-                if self.board[y][x] == -1:
-                    color = random.randint(0, 5)
+                if self.board[y][x] == "empty":
+                    color = random.choice([c.value for c in list(BlockColor)[:6]])
                     self.board[y][x] = color
                     new_blocks.append(NewBlock(
                         pos=Position(x=x, y=y),
-                        value=list(BlockColor)[color]
+                        value=color
                     ))
         
         return new_blocks
@@ -183,7 +187,7 @@ class GameState(BaseModel):
     player1: Player
     player2: Player
     current_player: str  # uniq_id of current player
-    board: List[List[int]]  # 7x8 board with color indices
+    board: List[List[str]]  # 7x8 board with color names
     round: int = 1
     status: GameStatus = GameStatus.WAITING
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -225,7 +229,7 @@ class GameSession(BaseModel):
     player1_name: str
     player2_name: str
     current_player_id: str
-    board: List[List[int]]  # 7x8 board
+    board: List[List[str]]  # 7x8 board of color names
     player1_score: int = 0
     player2_score: int = 0
     player1_moves_left: int = 2

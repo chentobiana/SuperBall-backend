@@ -81,7 +81,7 @@ class GameService:
             raise ValueError("Invalid position")
 
         # Check if position has a block
-        if game.board[y][x] == -1:
+        if game.board[y][x] == "empty":
             raise ValueError("No block at this position")
 
         # Process the move
@@ -121,7 +121,7 @@ class GameService:
                 total_score=current_score,
                 round=game.round,
                 moves_left=moves_left_after,
-                board=self._board_to_colors(game.board),
+                board=game.board,
                 exploded=[],
                 fallen=[],
                 new_blocks=[]
@@ -217,7 +217,7 @@ class GameService:
         all_exploded = [[pos[0], pos[1]] for pos in exploded_positions] + cascaded_explosions
         all_fallen = [{"from": move.from_pos.to_list(), "to": move.to_pos.to_list()} 
                      for move in fallen_moves + cascaded_fallen]
-        all_new_blocks = [{"pos": block.pos.to_list(), "value": block.value.value} 
+        all_new_blocks = [{"pos": block.pos.to_list(), "value": block.value} 
                          for block in new_blocks + cascaded_new_blocks]
         
         return MoveResponse(
@@ -225,7 +225,7 @@ class GameService:
             total_score=current_score,
             round=game.round,
             moves_left=moves_left_after,
-            board=self._board_to_colors(game.board),
+            board=game.board,
             exploded=all_exploded,
             fallen=all_fallen,
             new_blocks=all_new_blocks
@@ -352,7 +352,7 @@ class GameService:
             fallen=all_fallen,
             new_blocks=all_new_blocks
         )
-    
+
     def _settle_board(self, game_board: GameBoard):
         """Run gravity + refill + cascading matches until stable.
 
@@ -361,12 +361,12 @@ class GameService:
         # First gravity + refill after the initial explosion
         fallen_moves = game_board.apply_gravity()
         new_blocks = game_board.fill_empty_spaces()
-        
+
         cascaded_explosions = []
         cascaded_fallen = []
         cascaded_new_blocks = []
         cascade_score = 0
-        
+
         while True:
             matches = game_board.find_matches()
             if not matches:
@@ -381,7 +381,7 @@ class GameService:
             cascaded_fallen.extend(cascade_fallen)
             cascade_new = game_board.fill_empty_spaces()
             cascaded_new_blocks.extend(cascade_new)
-        
+
         return (
             fallen_moves,
             new_blocks,
@@ -391,15 +391,6 @@ class GameService:
             cascade_score,
         )
 
-    @staticmethod
-    def _board_to_colors(board: list[list[int]]) -> list[list[str]]:
-        """Convert numeric board (0..5) to color names as strings.
-
-        Uses the ordering of BlockColor enum used throughout the service.
-        """
-        from app.models.game import BlockColor
-        palette = [c.value for c in list(BlockColor)[:6]]
-        return [[palette[val] if 0 <= val < len(palette) else "empty" for val in row] for row in board]
     
     async def get_game_state(self, game_id: str) -> Optional[GameSession]:
         """Get current game state"""

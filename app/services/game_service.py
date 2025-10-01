@@ -95,11 +95,17 @@ class GameService:
         internal_board = [game.board[7-i] for i in range(8)]
         game_board = GameBoard(internal_board)
         
+        # Save original board for comparison
+        original_board = [row[:] for row in game.board]
+        
         # Simulate clicking on the block - for now just explode connected blocks of same color
         # Convert coordinates back to internal format for processing
         internal_y = 7 - y
         clicked_color = game_board.board[internal_y][x]
+        logger.info(f"Clicked on ({x},{y}) -> internal ({x},{internal_y}) with color '{clicked_color}'")
+        
         exploded_positions = self._get_connected_blocks(game_board, x, internal_y, clicked_color)
+        logger.info(f"Found {len(exploded_positions)} connected blocks: {exploded_positions}")
         
         if len(exploded_positions) < 3:
             # No valid match: do not consume move and do not switch turn
@@ -252,11 +258,23 @@ class GameService:
         })
         
         # Prepare response in the exact schema expected by the client
+        # No coordinate conversion needed - board already uses frontend coordinates
         all_exploded = [[pos[0], pos[1]] for pos in exploded_positions] + cascaded_explosions
         all_fallen = [{"from": move.from_pos.to_list(), "to": move.to_pos.to_list()} 
                      for move in fallen_moves + cascaded_fallen]
         all_new_blocks = [{"pos": block.pos.to_list(), "value": block.value} 
                          for block in new_blocks + cascaded_new_blocks]
+        
+        exploded_coords = set((pos[0], pos[1]) for pos in all_exploded)
+        fallen_from_coords = set((move["from"][0], move["from"][1]) for move in all_fallen)
+        overlap = exploded_coords.intersection(fallen_from_coords)
+        if overlap:
+            logger.error(f"IMPOSSIBLE: Block(s) {overlap} appear in both exploded and fallen! This should never happen!")
+        
+        if game.board == original_board:
+            logger.error(f"CRITICAL: Board didn't change after successful move with {len(exploded_positions)} explosions!")
+            logger.error(f"Original board: {original_board}")
+            logger.error(f"Final board: {game.board}")
         
         return MoveResponse(
             score_gained=total_score_gained,
@@ -379,14 +397,12 @@ class GameService:
             "round": game.round
         })
         
-        # Prepare response
+        # Prepare response - no coordinate conversion needed
         all_exploded = [[pos[0], pos[1]] for pos in bomb_positions] + cascaded_explosions
         all_fallen = [{"from": move.from_pos.to_list(), "to": move.to_pos.to_list()} 
                      for move in fallen_moves + cascaded_fallen]
-        all_new_blocks = [
-            {"pos": block.pos.to_list(), "value": block.value}
-            for block in new_blocks + cascaded_new_blocks
-        ]
+        all_new_blocks = [{"pos": block.pos.to_list(), "value": block.value}
+                         for block in new_blocks + cascaded_new_blocks]
         
         return MoveResponse(
             score_gained=total_score_gained,

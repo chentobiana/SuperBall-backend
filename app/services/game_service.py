@@ -87,8 +87,12 @@ class GameService:
         if not (0 <= x < 7 and 0 <= y < 8):
             raise ValueError("Invalid position")
 
-        # Check if position has a block (board now uses frontend coordinates)
-        if game.board[y][x] == "Empty":
+        # Convert frontend Y coordinate (Y=0 at bottom) to server Y coordinate (Y=0 at top)
+        server_y = 7 - y
+        logger.info(f"Frontend sent ({x},{y}) -> converting to server ({x},{server_y})")
+
+        # Check if position has a block
+        if game.board[server_y][x] == "Empty":
             raise ValueError("No block at this position")
 
         # Process the move (flip board back to internal format for processing)
@@ -100,9 +104,9 @@ class GameService:
         
         # Simulate clicking on the block - for now just explode connected blocks of same color
         # Convert coordinates back to internal format for processing
-        internal_y = 7 - y
+        internal_y = 7 - server_y  # server_y is already converted from frontend
         clicked_color = game_board.board[internal_y][x]
-        logger.info(f"Clicked on ({x},{y}) -> internal ({x},{internal_y}) with color '{clicked_color}'")
+        logger.info(f"Processing click at server ({x},{server_y}) -> internal ({x},{internal_y}) with color '{clicked_color}'")
         
         exploded_positions = self._get_connected_blocks(game_board, x, internal_y, clicked_color)
         logger.info(f"Found {len(exploded_positions)} connected blocks: {exploded_positions}")
@@ -328,10 +332,14 @@ class GameService:
         if not (0 <= x < 7 and 0 <= y < 8):
             raise ValueError("Invalid position")
         
+        # Convert frontend Y coordinate to server Y coordinate
+        server_y = 7 - y
+        logger.info(f"Bomb: Frontend sent ({x},{y}) -> converting to server ({x},{server_y})")
+        
         # Get all neighbors + center position (convert to internal format for processing)
         internal_board = [game.board[7-i] for i in range(8)]
         game_board = GameBoard(internal_board)
-        internal_y = 7 - y
+        internal_y = 7 - server_y
         bomb_positions = [(x, internal_y)]
         bomb_positions.extend(game_board.get_neighbors(x, internal_y))
         

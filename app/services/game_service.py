@@ -106,14 +106,34 @@ class GameService:
         # Convert coordinates back to internal format for processing
         internal_y = 7 - server_y  # server_y is already converted from frontend
         clicked_color = game_board.board[internal_y][x]
-        logger.info(f"Processing click at server ({x},{server_y}) -> internal ({x},{internal_y}) with color '{clicked_color}'")
+        logger.info(
+            "Processing click at server (%d,%d) -> internal (%d,%d) with color '%s'",
+            x,
+            server_y,
+            x,
+            internal_y,
+            clicked_color,
+        )
         
-        exploded_positions = self._get_connected_blocks(game_board, x, internal_y, clicked_color)
-        logger.info(f"Found {len(exploded_positions)} connected blocks: {exploded_positions}")
+        exploded_positions = self._get_connected_blocks(
+            game_board, x, internal_y, clicked_color
+        )
+        logger.info(
+            "Found %d connected blocks: %s",
+            len(exploded_positions),
+            exploded_positions,
+        )
         
         if len(exploded_positions) < 3:
             # No valid match: do not consume move and do not switch turn
-            logger.warning(f"Player {uniqId} clicked ({x},{y}) with color '{clicked_color}' but only found {len(exploded_positions)} connected blocks")
+            logger.warning(
+                "Player %s clicked (%d,%d) with color '%s' but only found %d connected blocks",
+                uniqId,
+                x,
+                y,
+                clicked_color,
+                len(exploded_positions),
+            )
             
             # Ensure there is at least one possible move; regenerate silently if needed
             board_regenerated = False
@@ -169,35 +189,8 @@ class GameService:
         # Fill empty spaces
         new_blocks = game_board.fill_empty_spaces()
         
-        # Check for cascading matches
-        cascaded_explosions = []
-        cascaded_fallen = []
-        cascaded_new_blocks = []
+        # Per new rules: do NOT auto-cascade. Only the clicked group explodes this turn.
         total_score_gained = score_gained
-        
-        while True:
-            matches = game_board.find_matches()
-            if not matches:
-                break
-            
-            # Explode all matches
-            all_match_positions = []
-            for match in matches:
-                all_match_positions.extend(match)
-            
-            cascaded_explosions.extend([[pos[0], pos[1]] for pos in all_match_positions])
-            game_board.explode_blocks(all_match_positions)
-            
-            # Add cascade score
-            total_score_gained += self._calculate_score(len(all_match_positions))
-            
-            # Apply gravity again
-            cascade_fallen = game_board.apply_gravity()
-            cascaded_fallen.extend(cascade_fallen)
-            
-            # Fill empty spaces again
-            cascade_new = game_board.fill_empty_spaces()
-            cascaded_new_blocks.extend(cascade_new)
         
         # Consume move now that a valid explosion occurred
         if game.player1_id == uniqId:
@@ -263,22 +256,32 @@ class GameService:
         
         # Prepare response in the exact schema expected by the client
         # No coordinate conversion needed - board already uses frontend coordinates
-        all_exploded = [[pos[0], pos[1]] for pos in exploded_positions] + cascaded_explosions
-        all_fallen = [{"from": move.from_pos.to_list(), "to": move.to_pos.to_list()} 
-                     for move in fallen_moves + cascaded_fallen]
-        all_new_blocks = [{"pos": block.pos.to_list(), "value": block.value} 
-                         for block in new_blocks + cascaded_new_blocks]
+        all_exploded = [[pos[0], pos[1]] for pos in exploded_positions]
+        all_fallen = [{
+            "from": move.from_pos.to_list(),
+            "to": move.to_pos.to_list(),
+        } for move in fallen_moves]
+        all_new_blocks = [{
+            "pos": block.pos.to_list(),
+            "value": block.value,
+        } for block in new_blocks]
         
         exploded_coords = set((pos[0], pos[1]) for pos in all_exploded)
         fallen_from_coords = set((move["from"][0], move["from"][1]) for move in all_fallen)
         overlap = exploded_coords.intersection(fallen_from_coords)
         if overlap:
-            logger.error(f"IMPOSSIBLE: Block(s) {overlap} appear in both exploded and fallen! This should never happen!")
+            logger.error(
+                "IMPOSSIBLE: Block(s) %s appear in both exploded and fallen! This should never happen!",
+                overlap,
+            )
         
         if game.board == original_board:
-            logger.error(f"CRITICAL: Board didn't change after successful move with {len(exploded_positions)} explosions!")
-            logger.error(f"Original board: {original_board}")
-            logger.error(f"Final board: {game.board}")
+            logger.error(
+                "CRITICAL: Board didn't change after successful move with %d explosions!",
+                len(exploded_positions),
+            )
+            logger.error("Original board: %s", original_board)
+            logger.error("Final board: %s", game.board)
         
         return MoveResponse(
             score_gained=total_score_gained,
@@ -323,8 +326,9 @@ class GameService:
             raise ValueError("Not your turn")
         
         # Check if player has bombs
-        bombs_available = (game.player1_bombs if game.player1_id == uniqId 
-                          else game.player2_bombs)
+        bombs_available = (
+            game.player1_bombs if game.player1_id == uniqId else game.player2_bombs
+        )
         if bombs_available <= 0:
             raise ValueError("No bombs available")
         
@@ -334,7 +338,13 @@ class GameService:
         
         # Convert frontend Y coordinate to server Y coordinate
         server_y = 7 - y
-        logger.info(f"Bomb: Frontend sent ({x},{y}) -> converting to server ({x},{server_y})")
+        logger.info(
+            "Bomb: Frontend sent (%d,%d) -> converting to server (%d,%d)",
+            x,
+            y,
+            x,
+            server_y,
+        )
         
         # Get all neighbors + center position (convert to internal format for processing)
         internal_board = [game.board[7-i] for i in range(8)]
@@ -353,17 +363,11 @@ class GameService:
         # Calculate score
         score_gained = self._calculate_score(len(bomb_positions)) * 2  # Bomb bonus
         
-        # Apply explosions then run the common settle loop (gravity + refills + cascades)
+        # Apply explosions; per new rules do NOT auto-cascade after bomb.
         game_board.explode_blocks(bomb_positions)
-        (
-            fallen_moves,
-            new_blocks,
-            cascaded_explosions,
-            cascaded_fallen,
-            cascaded_new_blocks,
-            cascade_score
-        ) = self._settle_board(game_board)
-        total_score_gained = score_gained + cascade_score
+        fallen_moves = game_board.apply_gravity()
+        new_blocks = game_board.fill_empty_spaces()
+        total_score_gained = score_gained
         
         # Update game state
         if game.player1_id == uniqId:
@@ -406,11 +410,15 @@ class GameService:
         })
         
         # Prepare response - no coordinate conversion needed
-        all_exploded = [[pos[0], pos[1]] for pos in bomb_positions] + cascaded_explosions
-        all_fallen = [{"from": move.from_pos.to_list(), "to": move.to_pos.to_list()} 
-                     for move in fallen_moves + cascaded_fallen]
-        all_new_blocks = [{"pos": block.pos.to_list(), "value": block.value}
-                         for block in new_blocks + cascaded_new_blocks]
+        all_exploded = [[pos[0], pos[1]] for pos in bomb_positions]
+        all_fallen = [{
+            "from": move.from_pos.to_list(),
+            "to": move.to_pos.to_list(),
+        } for move in fallen_moves]
+        all_new_blocks = [{
+            "pos": block.pos.to_list(),
+            "value": block.value,
+        } for block in new_blocks]
         
         return MoveResponse(
             score_gained=total_score_gained,
@@ -461,11 +469,10 @@ class GameService:
             cascade_score,
         )
 
-    
     async def get_game_state(self, game_id: str) -> Optional[GameSession]:
         """Get current game state"""
         return await self.game_repo.find_by_id(game_id)
-    
+
     async def get_player_games(self, uniqId: str) -> List[GameSession]:
         """Get all games for a player"""
         return await self.game_repo.find_by_player(uniqId, GameStatus.IN_PROGRESS)

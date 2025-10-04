@@ -66,6 +66,10 @@ class GameService:
         if not game:
             raise ValueError("Game not found")
 
+        # Check if game is finished
+        if game.status == GameStatus.FINISHED:
+            raise ValueError("Game is finished")
+
         # Validate it's the player's turn
         if game.current_player_id != uniqId:
             raise ValueError("Not your turn")
@@ -162,6 +166,17 @@ class GameService:
                 "round": game.round,
             })
 
+            # Check if game is over
+            game_over = game.status == GameStatus.FINISHED
+            winner = None
+            if game_over:
+                if game.player1_score > game.player2_score:
+                    winner = game.player1_name
+                elif game.player2_score > game.player1_score:
+                    winner = game.player2_name
+                else:
+                    winner = "Tie"
+            
             return MoveResponse(
                 score_gained=0,
                 total_score=current_score,
@@ -172,6 +187,10 @@ class GameService:
                 fallen=[],
                 new_blocks=[],
                 board_regenerated=board_regenerated,
+                game_over=game_over,
+                winner=winner,
+                clicked_x=x,
+                clicked_y=y,
             )
         
         # Calculate score
@@ -222,6 +241,17 @@ class GameService:
                 game.current_player_id = game.player1_id
                 game.player1_moves_left = 2
                 game.round += 1  # New round when it comes back to player 1
+                
+                # Check if game should end after 5 rounds
+                if game.round > 5:
+                    game.status = GameStatus.FINISHED
+                    # Determine winner based on score
+                    if game.player1_score > game.player2_score:
+                        winner = game.player1_name
+                    elif game.player2_score > game.player1_score:
+                        winner = game.player2_name
+                    else:
+                        winner = "Tie"
         
         # Reset/extend turn deadline for the (possibly new) current player
         try:
@@ -283,6 +313,17 @@ class GameService:
             logger.error("Original board: %s", original_board)
             logger.error("Final board: %s", game.board)
         
+        # Check if game is over
+        game_over = game.status == GameStatus.FINISHED
+        winner = None
+        if game_over:
+            if game.player1_score > game.player2_score:
+                winner = game.player1_name
+            elif game.player2_score > game.player1_score:
+                winner = game.player2_name
+            else:
+                winner = "Tie"
+        
         return MoveResponse(
             score_gained=total_score_gained,
             total_score=current_score,
@@ -293,6 +334,10 @@ class GameService:
             fallen=all_fallen,
             new_blocks=all_new_blocks,
             board_regenerated=board_regenerated,
+            game_over=game_over,
+            winner=winner,
+            clicked_x=x,
+            clicked_y=y,
         )
     
     def _get_connected_blocks(self, game_board: GameBoard, x: int, y: int, color: str) -> List[Tuple[int, int]]:
@@ -320,6 +365,10 @@ class GameService:
         game = await self.game_repo.find_by_id(game_id)
         if not game:
             raise ValueError("Game not found")
+        
+        # Check if game is finished
+        if game.status == GameStatus.FINISHED:
+            raise ValueError("Game is finished")
         
         # Validate it's the player's turn
         if game.current_player_id != uniqId:
@@ -392,6 +441,10 @@ class GameService:
                 game.current_player_id = game.player1_id
                 game.player1_moves_left = 2
                 game.round += 1
+                
+                # Check if game should end after 5 rounds
+                if game.round > 5:
+                    game.status = GameStatus.FINISHED
         
         # Update board (flip to match frontend coordinates)
         game.board = [game_board.board[7-i] for i in range(8)]
@@ -420,6 +473,17 @@ class GameService:
             "value": block.value,
         } for block in new_blocks]
         
+        # Check if game is over
+        game_over = game.status == GameStatus.FINISHED
+        winner = None
+        if game_over:
+            if game.player1_score > game.player2_score:
+                winner = game.player1_name
+            elif game.player2_score > game.player1_score:
+                winner = game.player2_name
+            else:
+                winner = "Tie"
+        
         return MoveResponse(
             score_gained=total_score_gained,
             total_score=current_score,
@@ -428,7 +492,11 @@ class GameService:
             board=game.board,
             exploded=all_exploded,
             fallen=all_fallen,
-            new_blocks=all_new_blocks
+            new_blocks=all_new_blocks,
+            game_over=game_over,
+            winner=winner,
+            clicked_x=x,
+            clicked_y=y,
         )
 
     def _settle_board(self, game_board: GameBoard):

@@ -97,11 +97,11 @@ class GameBoard:
         if y % 2 == 0:  # even row
             directions.extend([
                 (-1, 1),  # up-left
-                (-1, -1), # down-left
+                (-1, -1),  # down-left
             ])
         else:  # odd row
             directions.extend([
-                (1, 1),   # up-right  
+                (1, 1),   # up-right
                 (1, -1),  # down-right
             ])
         
@@ -242,11 +242,13 @@ class MoveResponse(BaseModel):
     board_regenerated: bool = False  # True if board was replaced due to no moves
     game_over: bool = False
     winner: Optional[str] = None
+    clicked_x: int  # The x coordinate that was clicked
+    clicked_y: int  # The y coordinate that was clicked
 
 
 class GameSession(BaseModel):
     """Game session for database storage"""
-    id: Optional[str] = Field(None, alias="_id") 
+    id: Optional[str] = Field(None, alias="_id")
     player1_id: str
     player2_id: str
     player1_name: str

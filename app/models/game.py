@@ -158,40 +158,40 @@ class GameBoard:
             self.board[y][x] = "Empty"  # Unified empty sentinel
     
     def apply_gravity(self) -> List[BlockMove]:
-        """Apply gravity and return list of moves made"""
+        """Apply gravity (bottom = y=0) and return list of moves made"""
         moves = []
-        
-        for x in range(7):  # Updated for 7 columns
-            # Get all non-empty blocks in this column
+
+        for x in range(7):  # 7 columns
+            # Get all non-empty blocks in this column (bottom→top)
             column_blocks = []
-            for y in range(8):  # Updated for 8 rows
+            for y in range(8):
                 if self.board[y][x] != "Empty":
                     column_blocks.append((y, self.board[y][x]))
-            
+
             # Clear the column
-            for y in range(8):  # Updated for 8 rows
+            for y in range(8):
                 self.board[y][x] = "Empty"
-            
-            # Place blocks at bottom
+
+            # Place blocks at the bottom of the column (y starts from 0)
             for i, (old_y, color) in enumerate(column_blocks):
-                new_y = i
+                new_y = i  # lowest available spot (0 → up)
                 self.board[new_y][x] = color
-                
+
                 if old_y != new_y:
                     moves.append(BlockMove(
                         from_pos=Position(x=x, y=old_y),
                         to_pos=Position(x=x, y=new_y)
                     ))
-        
+
         return moves
     
     def fill_empty_spaces(self) -> List[NewBlock]:
-        """Fill empty spaces with new random blocks"""
+        """Fill empty spaces with new random blocks (bottom to top for Unity coordinates)"""
         import random
         new_blocks = []
-        
-        for x in range(7):  # Updated for 7 columns
-            for y in range(7, -1, -1):  # Top to bottom, updated for 8 rows
+
+        for x in range(7):  # 7 columns
+            for y in range(8):  # bottom (0) → top (7)
                 if self.board[y][x] == "Empty":
                     color = random.choice([c.value for c in list(BlockColor)[:6]])
                     self.board[y][x] = color
@@ -199,7 +199,7 @@ class GameBoard:
                         pos=Position(x=x, y=y),
                         value=color
                     ))
-        
+
         return new_blocks
 
 

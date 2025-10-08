@@ -2,8 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from app.database.user_repository import UserRepository
 import logging
-from app.models.user import UserCreate
-from app.models.user import UserUpdate, UserInDB
+from app.models.user import UserCreate, UserUpdate, UserResponse
 
 logger = logging.getLogger(__name__)
 
@@ -85,4 +84,32 @@ async def update_name(payload: UpdateNameRequest, user_repo: UserRepository = De
         raise
     except Exception as e:
         logger.error(f"Error updating name: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@router.get("/user/{uniqId}", response_model=UserResponse)
+async def get_user_data(uniqId: str, user_repo: UserRepository = Depends(get_user_repo)):
+    """Get full user data including rewards"""
+    try:
+        user = await user_repo.find_by_unique_id(uniqId)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        return UserResponse(
+            id=user.id,
+            uniqId=user.uniqId,
+            created_at=user.created_at,
+            last_login=user.last_login,
+            is_active=True,  # Assuming active if found
+            level=user.level,
+            score=user.score,
+            coins=user.coins,
+            lives=user.lives,
+            trophies=user.trophies,
+            stars=user.stars
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user data: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")

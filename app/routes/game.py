@@ -96,7 +96,7 @@ async def make_move(
             "data": response.model_dump()
         }, request.game_id)
         
-        # Also send turn update
+        # Also send turn update with scores (no money during game)
         game = await game_service.get_game_state(request.game_id)
         if game:
             await manager.send_personal_message({
@@ -105,7 +105,10 @@ async def make_move(
                 "current_player_name": game.player1_name if game.current_player_id == game.player1_id else game.player2_name,
                 "round": game.round,
                 "player1_moves_left": game.player1_moves_left,
-                "player2_moves_left": game.player2_moves_left
+                "player2_moves_left": game.player2_moves_left,
+                "player1_score": game.player1_score,
+                "player2_score": game.player2_score,
+                "score_gained_this_turn": response.score_gained
             }, request.game_id)
 
         return response
@@ -136,7 +139,7 @@ async def use_bomb(
             "data": response.model_dump()
         }, request.game_id)
         
-        # Also send turn update
+        # Also send turn update with scores (no money during game)
         game = await game_service.get_game_state(request.game_id)
         if game:
             await manager.send_personal_message({
@@ -145,7 +148,10 @@ async def use_bomb(
                 "current_player_name": game.player1_name if game.current_player_id == game.player1_id else game.player2_name,
                 "round": game.round,
                 "player1_moves_left": game.player1_moves_left,
-                "player2_moves_left": game.player2_moves_left
+                "player2_moves_left": game.player2_moves_left,
+                "player1_score": game.player1_score,
+                "player2_score": game.player2_score,
+                "score_gained_this_turn": response.score_gained
             }, request.game_id)
 
         return response

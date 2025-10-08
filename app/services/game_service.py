@@ -4,6 +4,7 @@ from app.models.game import (
     GameSession, GameBoard, MoveResponse, GameStatus
 )
 from app.database.game_repository import GameRepository
+from app.services.reward_service import RewardService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ class GameService:
 
     def __init__(self):
         self.game_repo = GameRepository()
+        self.reward_service = RewardService()
 
     async def create_game_session(self, player1_id: str, player1_name: str,
                                   player2_id: str, player2_name: str) -> GameSession:
@@ -252,6 +254,9 @@ class GameService:
                         winner = game.player2_name
                     else:
                         winner = "Tie"
+                    
+                    # Process rewards for finished game
+                    await self.finish_game(game.id)
         
         # Reset/extend turn deadline for the (possibly new) current player
         try:
@@ -445,6 +450,9 @@ class GameService:
                 # Check if game should end after 5 rounds
                 if game.round > 5:
                     game.status = GameStatus.FINISHED
+                    
+                    # Process rewards for finished game
+                    await self.finish_game(game.id)
         
         # Update board (flip to match frontend coordinates)
         game.board = [game_board.board[7-i] for i in range(8)]
@@ -544,3 +552,65 @@ class GameService:
     async def get_player_games(self, uniqId: str) -> List[GameSession]:
         """Get all games for a player"""
         return await self.game_repo.find_by_player(uniqId, GameStatus.IN_PROGRESS)
+    
+    async def finish_game(self, game_id: str) -> bool:
+        """
+        Finish a game and process rewards for both players
+        Returns True if successful, False otherwise
+        """
+        try:
+            # Get game session
+            game = await self.game_repo.find_by_id(game_id)
+            if not game:
+                logger.error(f"Game {game_id} not found")
+                return False
+            
+            # Mark game as finished
+            await self.game_repo.update_game(game_id, {
+                "status": GameStatus.FINISHED,
+                "updated_at": datetime.utcnow()
+            })
+            
+            # Process rewards for both players
+            player1_result, player2_result = await self.reward_service.process_game_result(
+                game_id=game_id,
+                player1_id=game.player1_id,
+                player2_id=game.player2_id
+            )
+            
+            if player1_result and player2_result:
+                logger.info(f"Successfully processed rewards for finished game {game_id}")
+                
+                # Send game over notification via WebSocket
+                from app.routes.game import manager
+                await manager.send_personal_message({
+                    "type": "game_over",
+                    "game_id": game_id,
+                    "player1_result": {
+                        "player_id": game.player1_id,
+                        "player_name": game.player1_name,
+                        "score": game.player1_score,
+                        "trophies_gained": player1_result.trophies_gained,
+                        "money_gained": player1_result.money_gained,
+                        "stars_earned": player1_result.stars_earned,
+                        "outcome": player1_result.outcome.value
+                    },
+                    "player2_result": {
+                        "player_id": game.player2_id,
+                        "player_name": game.player2_name,
+                        "score": game.player2_score,
+                        "trophies_gained": player2_result.trophies_gained,
+                        "money_gained": player2_result.money_gained,
+                        "stars_earned": player2_result.stars_earned,
+                        "outcome": player2_result.outcome.value
+                    }
+                }, game_id)
+                
+                return True
+            else:
+                logger.error(f"Failed to process rewards for game {game_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error finishing game {game_id}: {e}")
+            return False

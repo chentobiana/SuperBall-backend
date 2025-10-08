@@ -131,9 +131,67 @@ class UserRepository:
                     "level": user.level,
                     "score": user.score,
                     "coins": user.coins,
-                    "lives": user.lives
+                    "lives": user.lives,
+                    "trophies": user.trophies,
+                    "stars": user.stars
                 }
             return None
         except Exception as e:
             logger.error(f"Error getting user stats {unique_id}: {e}")
+            raise
+
+    async def update_rewards(self, unique_id: str, trophies_change: int,
+                             money_change: int, stars_change: int) -> Optional[UserInDB]:
+        """
+        Update user rewards (trophies, money, stars)
+        """
+        try:
+            # Get current user data
+            user = await self.find_by_unique_id(unique_id)
+            if not user:
+                return None
+            
+            # Calculate new values
+            new_trophies = max(0, user.trophies + trophies_change)  # Don't go below 0
+            new_money = user.coins + money_change
+            new_stars = user.stars + stars_change
+            
+            # Update in database
+            result = await self.collection.update_one(
+                {"$or": [
+                    {"uniqId": unique_id},
+                    {"unique_id": unique_id}
+                ]},
+                {"$set": {
+                    "trophies": new_trophies,
+                    "coins": new_money,
+                    "stars": new_stars,
+                    "updated_at": datetime.utcnow()
+                }}
+            )
+            
+            if result.modified_count > 0:
+                # Return updated user
+                return await self.find_by_unique_id(unique_id)
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error updating rewards for user {unique_id}: {e}")
+            raise
+
+    async def get_user_rewards(self, unique_id: str) -> Optional[dict]:
+        """
+        Get user rewards data
+        """
+        try:
+            user = await self.find_by_unique_id(unique_id)
+            if user:
+                return {
+                    "trophies": user.trophies,
+                    "coins": user.coins,
+                    "stars": user.stars
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user rewards {unique_id}: {e}")
             raise

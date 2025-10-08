@@ -4,6 +4,7 @@ from app.database.connection import connect_to_mongo, close_mongo_connection
 from app.routes.auth import router as auth_router
 from app.routes.matchmaking import router as matchmaking_router
 from app.routes.game import router as game_router
+from app.routes.rewards import router as rewards_router
 from app.config import settings
 import logging
 
@@ -36,6 +37,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(matchmaking_router)
 app.include_router(game_router)
+app.include_router(rewards_router)
 
 
 @app.on_event("startup")

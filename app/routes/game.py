@@ -1,8 +1,6 @@
-import random
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
-from pydantic import BaseModel
 from typing import Dict, List
-from app.models.game import MoveRequest, MoveResponse, GameSession
+from app.models.game import MoveRequest, MoveResponse
 from app.services.game_service import GameService
 import logging
 import json
@@ -10,7 +8,6 @@ import json
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/game", tags=["game"])
-
 
 
 # WebSocket connections manager
@@ -63,11 +60,6 @@ def get_game_service():
     return GameService()
 
 
-class BombMoveRequest(BaseModel):
-    x: int
-    y: int
-    game_id: str
-    uniqId: str
 
 
 ## Note: Removed UX-only /initial-board. Clients should call /game/state/{game_id}.
@@ -119,47 +111,6 @@ async def make_move(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/bomb", response_model=MoveResponse)
-async def use_bomb(
-    request: BombMoveRequest,
-    game_service: GameService = Depends(get_game_service)
-):
-    """Use a bomb at the specified position"""
-    try:
-        response = await game_service.use_bomb(
-            request.game_id,
-            request.uniqId,
-            request.x,
-            request.y
-        )
-
-        # Notify all players via WebSocket about the bomb and current turn
-        await manager.send_personal_message({
-            "type": "opponent_bomb",
-            "data": response.model_dump()
-        }, request.game_id)
-        
-        # Also send turn update with scores (no money during game)
-        game = await game_service.get_game_state(request.game_id)
-        if game:
-            await manager.send_personal_message({
-                "type": "turn_update",
-                "current_player_id": game.current_player_id,
-                "current_player_name": game.player1_name if game.current_player_id == game.player1_id else game.player2_name,
-                "round": game.round,
-                "player1_moves_left": game.player1_moves_left,
-                "player2_moves_left": game.player2_moves_left,
-                "player1_score": game.player1_score,
-                "player2_score": game.player2_score,
-                "score_gained_this_turn": response.score_gained
-            }, request.game_id)
-
-        return response
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error using bomb: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/state/{game_id}")

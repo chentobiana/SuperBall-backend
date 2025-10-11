@@ -102,13 +102,13 @@ class GameService:
             raise ValueError("No block at this position")
 
         # Process the move (flip board back to internal format for processing)
-        internal_board = [game.board[7-i] for i in range(8)]
+        internal_board = [row[:] for row in game.board]
         game_board = GameBoard(internal_board)
         
         # Save original board for comparison
         original_board = [row[:] for row in game.board]
         
-        # Simulate clicking on the block - for now just explode connected blocks of same color
+        # Simulate clicking on the block - handle bombs specially
         # Convert coordinates back to internal format for processing
         internal_y = y  # server_y is already converted from frontend
         clicked_color = game_board.board[internal_y][x]
@@ -121,14 +121,35 @@ class GameService:
             clicked_color,
         )
         
-        exploded_positions = self._get_connected_blocks(
-            game_board, x, internal_y, clicked_color
-        )
-        logger.info(
-            "Found %d connected blocks: %s",
-            len(exploded_positions),
-            exploded_positions,
-        )
+        # Check if clicked block is a bomb
+        if clicked_color == "Bomb":
+            # Bomb behavior: explode center + all neighbors
+            bomb_positions = [(x, internal_y)]
+            bomb_positions.extend(game_board.get_neighbors(x, internal_y))
+            
+            # Remove positions that are already empty
+            bomb_positions = [
+                (bx, by)
+                for bx, by in bomb_positions
+                if game_board.board[by][bx] != "Empty"
+            ]
+            
+            exploded_positions = bomb_positions
+            logger.info(
+                "Bomb clicked: exploding center + %d neighbors: %s",
+                len(bomb_positions) - 1,
+                exploded_positions,
+            )
+        else:
+            # Regular block behavior: explode connected blocks of same color
+            exploded_positions = self._get_connected_blocks(
+                game_board, x, internal_y, clicked_color
+            )
+            logger.info(
+                "Found %d connected blocks: %s",
+                len(exploded_positions),
+                exploded_positions,
+            )
         
         if len(exploded_positions) < 3:
             # No valid match: do not consume move and do not switch turn
@@ -195,11 +216,16 @@ class GameService:
                 clicked_y=y,
             )
         
-        # Calculate score
-        score_gained = self._calculate_score(len(exploded_positions))
-        
-        # Check for bomb bonus (5+ blocks)
-        bomb_bonus = len(exploded_positions) >= 5
+        # Calculate score - special handling for bombs
+        if clicked_color == "Bomb":
+            # Bomb scoring: score_gained = _calculate_score(len(bomb_positions)) * 2
+            score_gained = self._calculate_score(len(exploded_positions)) * 2
+            bomb_bonus = False  # Bombs don't give bomb bonuses
+        else:
+            # Regular scoring
+            score_gained = self._calculate_score(len(exploded_positions))
+            # Check for bomb bonus (5+ blocks)
+            bomb_bonus = len(exploded_positions) >= 5
         
         # Apply explosions
         game_board.explode_blocks(exploded_positions)
@@ -363,149 +389,6 @@ class GameService:
             # 6+ blocks - exponential bonus
             return base_score * (blocks_count * 2)
     
-    async def use_bomb(self, game_id: str, uniqId: str, x: int, y: int) -> MoveResponse:
-        """Use a bomb at the specified position"""
-        
-        # Get game session
-        game = await self.game_repo.find_by_id(game_id)
-        if not game:
-            raise ValueError("Game not found")
-        
-        # Check if game is finished
-        if game.status == GameStatus.FINISHED:
-            raise ValueError("Game is finished")
-        
-        # Validate it's the player's turn
-        if game.current_player_id != uniqId:
-            raise ValueError("Not your turn")
-        
-        # Check if player has bombs
-        bombs_available = (
-            game.player1_bombs if game.player1_id == uniqId else game.player2_bombs
-        )
-        if bombs_available <= 0:
-            raise ValueError("No bombs available")
-        
-        # Validate position
-        if not (0 <= x < 7 and 0 <= y < 8):
-            raise ValueError("Invalid position")
-        
-        # Convert frontend Y coordinate to server Y coordinate
-        server_y = 7 - y
-        logger.info(
-            "Bomb: Frontend sent (%d,%d) -> converting to server (%d,%d)",
-            x,
-            y,
-            x,
-            server_y,
-        )
-        
-        # Get all neighbors + center position (convert to internal format for processing)
-        internal_board = [game.board[7-i] for i in range(8)]
-        game_board = GameBoard(internal_board)
-        internal_y = 7 - server_y
-        bomb_positions = [(x, internal_y)]
-        bomb_positions.extend(game_board.get_neighbors(x, internal_y))
-        
-        # Remove positions that are already empty (unified sentinel)
-        bomb_positions = [
-            (bx, by)
-            for bx, by in bomb_positions
-            if game_board.board[by][bx] != "Empty"
-        ]
-        
-        # Calculate score
-        score_gained = self._calculate_score(len(bomb_positions)) * 2  # Bomb bonus
-        
-        # Apply explosions; per new rules do NOT auto-cascade after bomb.
-        game_board.explode_blocks(bomb_positions)
-        fallen_moves = game_board.apply_gravity()
-        new_blocks = game_board.fill_empty_spaces()
-        total_score_gained = score_gained
-        
-        # Update game state
-        if game.player1_id == uniqId:
-            game.player1_score += total_score_gained
-            game.player1_bombs -= 1
-            game.player1_moves_left -= 1
-            current_score = game.player1_score
-            moves_left = game.player1_moves_left
-        else:
-            game.player2_score += total_score_gained
-            game.player2_bombs -= 1
-            game.player2_moves_left -= 1
-            current_score = game.player2_score
-            moves_left = game.player2_moves_left
-        
-        # Check if turn should switch
-        if moves_left == 0:
-            if game.current_player_id == game.player1_id:
-                game.current_player_id = game.player2_id
-                game.player2_moves_left = 2
-            else:
-                game.current_player_id = game.player1_id
-                game.player1_moves_left = 2
-                game.round += 1
-                
-                # Check if game should end after 5 rounds
-                if game.round > 5:
-                    game.status = GameStatus.FINISHED
-                    
-                    # Process rewards for finished game
-                    await self.finish_game(game.id)
-        
-        # Update board (flip to match frontend coordinates)
-        game.board = [game_board.board[7-i] for i in range(8)]
-        
-        # Save game state
-        await self.game_repo.update_game(game_id, {
-            "board": game.board,
-            "player1_score": game.player1_score,
-            "player2_score": game.player2_score,
-            "player1_moves_left": game.player1_moves_left,
-            "player2_moves_left": game.player2_moves_left,
-            "player1_bombs": game.player1_bombs,
-            "player2_bombs": game.player2_bombs,
-            "current_player_id": game.current_player_id,
-            "round": game.round
-        })
-        
-        # Prepare response - no coordinate conversion needed
-        all_exploded = [[pos[0], pos[1]] for pos in bomb_positions]
-        all_fallen = [{
-            "from": move.from_pos.to_list(),
-            "to": move.to_pos.to_list(),
-        } for move in fallen_moves]
-        all_new_blocks = [{
-            "pos": block.pos.to_list(),
-            "value": block.value,
-        } for block in new_blocks]
-        
-        # Check if game is over
-        game_over = game.status == GameStatus.FINISHED
-        winner = None
-        if game_over:
-            if game.player1_score > game.player2_score:
-                winner = game.player1_name
-            elif game.player2_score > game.player1_score:
-                winner = game.player2_name
-            else:
-                winner = "Tie"
-        
-        return MoveResponse(
-            score_gained=total_score_gained,
-            total_score=current_score,
-            round=game.round,
-            moves_left=moves_left,
-            board=game.board,
-            exploded=all_exploded,
-            fallen=all_fallen,
-            new_blocks=all_new_blocks,
-            game_over=game_over,
-            winner=winner,
-            clicked_x=x,
-            clicked_y=y,
-        )
 
     def _settle_board(self, game_board: GameBoard):
         """Run gravity + refill + cascading matches until stable.

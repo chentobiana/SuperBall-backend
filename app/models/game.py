@@ -239,12 +239,13 @@ class MoveResponse(BaseModel):
     exploded: List[List[int]]
     fallen: List[dict]
     new_blocks: List[dict]
+    new_bombs: Optional[List[dict]] = None
     board_regenerated: bool = False  # True if board was replaced due to no moves
     game_over: bool = False
     winner: Optional[str] = None
     clicked_x: int  # The x coordinate that was clicked
     clicked_y: int  # The y coordinate that was clicked
-
+    
 
 class GameSession(BaseModel):
     """Game session for database storage"""

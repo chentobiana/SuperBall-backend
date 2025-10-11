@@ -124,10 +124,10 @@ class GameService:
         # Check if clicked block is a bomb
         if clicked_color == "Bomb":
             # Convert Y for flipped board (so bomb works with inverted layout)
-            bomb_y = 7 - internal_y
+            # bomb_y = 7 - internal_y
 
-            bomb_positions = [(x, bomb_y)]
-            bomb_positions.extend(game_board.get_neighbors(x, bomb_y))
+            bomb_positions = [(x, internal_y)]
+            bomb_positions.extend(game_board.get_neighbors(x, internal_y))
 
             bomb_positions = [
                 (bx, by)

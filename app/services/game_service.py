@@ -94,7 +94,7 @@ class GameService:
             raise ValueError("Invalid position")
 
         # Convert frontend Y coordinate (Y=0 at bottom) to server Y coordinate (Y=0 at top)
-        server_y = y
+        server_y = 7 - y
         logger.info(f"Frontend sent ({x},{y}) -> converting to server ({x},{server_y})")
 
         # Check if position has a block
@@ -110,7 +110,7 @@ class GameService:
         
         # Simulate clicking on the block - handle bombs specially
         # Convert coordinates back to internal format for processing
-        internal_y = y  # server_y is already converted from frontend
+        internal_y = server_y  # server_y is already converted from frontend
         clicked_color = game_board.board[internal_y][x]
         logger.info(
             "Processing click at server (%d,%d) -> internal (%d,%d) with color '%s'",

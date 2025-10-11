@@ -102,7 +102,7 @@ class GameService:
             raise ValueError("No block at this position")
 
         # Process the move (flip board back to internal format for processing)
-        internal_board = [row[:] for row in game.board]
+        internal_board = [game.board[7-i] for i in range(8)]
         game_board = GameBoard(internal_board)
         
         # Save original board for comparison

@@ -238,6 +238,12 @@ class GameService:
         # Fill empty spaces
         new_blocks = game_board.fill_empty_spaces()
         
+        if bomb_bonus:
+            # Replace the clicked position with a Bomb instead of empty
+            bomb_x, bomb_y = x, internal_y
+            game_board.board[bomb_y][bomb_x] = "Bomb"
+            logger.info(f"💣 Created a new Bomb at ({bomb_x}, {bomb_y}) after a {len(exploded_positions)}-block explosion.")
+                
         # Per new rules: do NOT auto-cascade. Only the clicked group explodes this turn.
         total_score_gained = score_gained
         

@@ -123,23 +123,25 @@ class GameService:
         
         # Check if clicked block is a bomb
         if clicked_color == "Bomb":
-            # Bomb behavior: explode center + all neighbors
-            bomb_positions = [(x, internal_y)]
-            bomb_positions.extend(game_board.get_neighbors(x, internal_y))
-            
-            # Remove positions that are already empty
+            # Convert Y for flipped board (so bomb works with inverted layout)
+            bomb_y = 7 - internal_y
+
+            bomb_positions = [(x, bomb_y)]
+            bomb_positions.extend(game_board.get_neighbors(x, bomb_y))
+
             bomb_positions = [
                 (bx, by)
                 for bx, by in bomb_positions
                 if game_board.board[by][bx] != "Empty"
             ]
-            
+
             exploded_positions = bomb_positions
             logger.info(
-                "Bomb clicked: exploding center + %d neighbors: %s",
+                "Bomb clicked: adjusted for flipped board, exploding center + %d neighbors: %s",
                 len(bomb_positions) - 1,
                 exploded_positions,
             )
+
         else:
             # Regular block behavior: explode connected blocks of same color
             exploded_positions = self._get_connected_blocks(

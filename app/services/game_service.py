@@ -13,6 +13,12 @@ logger = logging.getLogger(__name__)
 class GameService:
     """Service for handling all server-side game rules and persistence.
 
+    Coordinate System:
+    - Board uses bottom-left origin (0,0) with Y increasing upward
+    - This matches Unity's coordinate system directly
+    - No coordinate conversion needed between frontend and backend
+    - Gravity moves blocks toward Y=0 (visually downward)
+    
     Responsibilities:
     - Create and persist `GameSession` objects
     - Validate turns, moves left, and board boundaries
@@ -31,11 +37,11 @@ class GameService:
 
         Player 1 always starts with the turn per game rules.
         Board is initialized as a 7x8 numeric matrix (colors 0..5).
+        Board uses bottom-left origin (0,0) with Y increasing upward.
         """
 
-        # Generate initial random board (flip to match frontend Y=0 at bottom)
-        temp_board = GameBoard().board
-        board = [temp_board[7-i] for i in range(8)]  # Flip vertically
+        # Generate initial board (already using bottom-left origin, Y=0 at bottom)
+        board = GameBoard().board  # GameBoard now generates in correct orientation
 
         game_session = GameSession(
             player1_id=player1_id,
@@ -93,41 +99,33 @@ class GameService:
         if not (0 <= x < 7 and 0 <= y < 8):
             raise ValueError("Invalid position")
 
-        # Convert frontend Y coordinate (Y=0 at bottom) to server Y coordinate (Y=0 at top)
-        server_y = y
-        logger.info(f"Frontend sent ({x},{y}) -> converting to server ({x},{server_y})")
+        # Board and coordinates now use same orientation as frontend (Y=0 at bottom)
+        logger.info(f"Processing move at ({x},{y})")
 
         # Check if position has a block
-        if game.board[server_y][x] == "Empty":
+        if game.board[y][x] == "Empty":
             raise ValueError("No block at this position")
 
-        # Process the move (flip board back to internal format for processing)
-        internal_board = [game.board[7-i] for i in range(8)]
-        game_board = GameBoard(internal_board)
+        # Process the move (board already in correct orientation)
+        game_board = GameBoard(game.board)
         
         # Save original board for comparison
         original_board = [row[:] for row in game.board]
         
-        # Simulate clicking on the block - handle bombs specially
-        # Convert coordinates back to internal format for processing
-        internal_y = y  # server_y is already converted from frontend
-        clicked_color = game_board.board[internal_y][x]
+        # Get clicked block color
+        clicked_color = game_board.board[y][x]
         logger.info(
-            "Processing click at server (%d,%d) -> internal (%d,%d) with color '%s'",
+            "Processing click at (%d,%d) with color '%s'",
             x,
-            server_y,
-            x,
-            internal_y,
-            clicked_color,
+            y,
+            clicked_color
         )
         
         # Check if clicked block is a bomb
         if clicked_color == "Bomb":
-            # Convert Y for flipped board (so bomb works with inverted layout)
-            # bomb_y = 7 - internal_y
-
-            bomb_positions = [(x, internal_y)]
-            bomb_positions.extend(game_board.get_neighbors(x, internal_y))
+            # Get bomb center and neighbors
+            bomb_positions = [(x, y)]
+            bomb_positions.extend(game_board.get_neighbors(x, y))
 
             bomb_positions = [
                 (bx, by)
@@ -137,7 +135,7 @@ class GameService:
 
             exploded_positions = bomb_positions
             logger.info(
-                "Bomb clicked: adjusted for flipped board, exploding center + %d neighbors: %s",
+                "Bomb clicked: exploding center + %d neighbors: %s",
                 len(bomb_positions) - 1,
                 exploded_positions,
             )
@@ -145,7 +143,7 @@ class GameService:
         else:
             # Regular block behavior: explode connected blocks of same color
             exploded_positions = self._get_connected_blocks(
-                game_board, x, internal_y, clicked_color
+                game_board, x, y, clicked_color
             )
             logger.info(
                 "Found %d connected blocks: %s",
@@ -233,13 +231,19 @@ class GameService:
         # Apply explosions
         game_board.explode_blocks(exploded_positions)
         
+        new_bombs = []
         if bomb_bonus:
-            bomb_x, bomb_y = x, internal_y
-            game_board.board[bomb_y][bomb_x] = "Bomb"
-            logger.info(f"💥 New Bomb created at ({bomb_x}, {bomb_y}) after {len(exploded_positions)}-block explosion.")
-            new_bombs = [{"pos": [bomb_x, bomb_y], "value": "Bomb"}]
-        else:
-            new_bombs = []
+            # Find the lowest exploded position in the clicked column that’s now empty
+            possible_y = [by for (bx, by) in exploded_positions if bx == x]
+            bomb_y = max(possible_y) if possible_y else y  # highest empty cell in same column
+
+            # Place bomb only if the cell is empty (avoid overlap with falling block)
+            if game_board.board[bomb_y][x] == "Empty":
+                game_board.board[bomb_y][x] = "Bomb"
+                logger.info(f"💥 New Bomb created at ({x}, {bomb_y}) after {len(exploded_positions)}-block explosion.")
+                new_bombs = [{"pos": [x, bomb_y], "value": "Bomb"}]
+            else:
+                logger.warning(f"⚠️ Skipped bomb creation at ({x},{bomb_y}) — cell occupied by falling block.")
 
         # Apply gravity (after bomb already exists)
         fallen_moves = game_board.apply_gravity()
@@ -308,7 +312,7 @@ class GameService:
             board_regenerated = True
 
         # Update board (flip to match frontend coordinates)
-        game.board = [game_board.board[7-i] for i in range(8)]
+        game.board = game_board.board
         
         # Save game state
         await self.game_repo.update_game(game_id, {

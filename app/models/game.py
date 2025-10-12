@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Tuple
 from datetime import datetime
 from enum import Enum
+import random
 
 
 class BlockColor(str, Enum):
@@ -55,6 +56,12 @@ class Player(BaseModel):
 class GameBoard:
     """Game board logic - 7x8 hexagonal grid (7 columns, 8 rows)
 
+    Coordinate System:
+    - Origin (0,0) is at bottom-left
+    - Y increases upward (0-7)
+    - X increases rightward (0-6)
+    - Matches Unity's coordinate system directly
+    
     Board stores color names as strings (e.g., "purple", "green"). Empty cells
     are marked as the string "Empty".
     """
@@ -62,10 +69,14 @@ class GameBoard:
         if board is None:
             self._generate_board_with_moves()
         else:
-            self.board = [row[:] for row in board]  # Deep copy
+            self.board = [row[:] for row in board] 
+
+        self.height = len(self.board)
+        self.width = len(self.board[0]) if self.board else 0 # Deep copy
 
     def _generate_board_with_moves(self) -> None:
-        """Generate a board that guarantees at least one possible move."""
+        """Generate a board that guarantees at least one possible move.
+        Uses bottom-left origin (0,0) with Y increasing upward."""
         import random
         palette = [c.value for c in list(BlockColor)[:6]]
         max_attempts = 100
@@ -81,8 +92,13 @@ class GameBoard:
         self.board[2][4] = color
     
     def get_neighbors(self, x: int, y: int) -> List[Tuple[int, int]]:
-        """Get hexagonal neighbors for position (x,y)
-        Note: 0,0 is bottom-left, hexagonal grid means 0,1 touches 1,0"""
+        """Get hexagonal neighbors for position (x,y).
+        
+        Uses bottom-left coordinate system:
+        - Origin (0,0) is bottom-left
+        - Y increases upward
+        - X increases rightward
+        - Hexagonal grid means (0,1) touches (1,0)"""
         neighbors = []
         
         # Standard adjacent positions
@@ -113,7 +129,11 @@ class GameBoard:
         return neighbors
     
     def find_matches(self) -> List[List[Tuple[int, int]]]:
-        """Find all groups of 3+ connected blocks of same color"""
+        """Find all groups of 3+ connected blocks of same color.
+        
+        Uses bottom-left coordinate system:
+        - Scans board from bottom (y=0) to top (y=7)
+        - Returns list of groups, each group is list of (x,y) positions"""
         visited = set()
         matches = []
         
@@ -139,7 +159,12 @@ class GameBoard:
         self._generate_board_with_moves()
     
     def _flood_fill(self, x: int, y: int, color: str, visited: set) -> List[Tuple[int, int]]:
-        """Flood fill to find connected blocks of same color"""
+        """Flood fill to find connected blocks of same color.
+        
+        Uses bottom-left coordinate system:
+        - Coordinates (x,y) use bottom-left origin
+        - Uses get_neighbors() for hexagonal grid traversal
+        - Returns list of connected (x,y) positions with matching color"""
         if (x, y) in visited or self.board[y][x] != color:
             return []
         
@@ -158,23 +183,26 @@ class GameBoard:
             self.board[y][x] = "Empty"  # Unified empty sentinel
     
     def apply_gravity(self) -> List[BlockMove]:
-        """Apply gravity (bottom = y=0) and return list of moves made"""
+        """Apply gravity so blocks fall toward y=0 (bottom).
+
+        Uses bottom-left coordinate system:
+        - Y increases upward
+        - Blocks fall downward (toward smaller Y)
+        - Each column is processed independently
+        """
         moves = []
 
-        for x in range(7):  # 7 columns
-            # Get all non-empty blocks in this column (bottom→top)
-            column_blocks = []
-            for y in range(8):
-                if self.board[y][x] != "Empty":
-                    column_blocks.append((y, self.board[y][x]))
+        for x in range(self.width):  # iterate over columns
+            # Collect non-empty blocks (from bottom to top)
+            column_blocks = [(y, self.board[y][x]) for y in range(self.height) if self.board[y][x] != "Empty"]
 
             # Clear the column
-            for y in range(8):
+            for y in range(self.height):
                 self.board[y][x] = "Empty"
 
-            # Place blocks at the bottom of the column (y starts from 0)
+            # Place collected blocks starting from y=0 (bottom)
             for i, (old_y, color) in enumerate(column_blocks):
-                new_y = i  # lowest available spot (0 → up)
+                new_y = i  # fill bottom-up, preserving order from lowest to highest
                 self.board[new_y][x] = color
 
                 if old_y != new_y:
@@ -184,21 +212,32 @@ class GameBoard:
                     ))
 
         return moves
-    
-    def fill_empty_spaces(self) -> List[NewBlock]:
-        """Fill empty spaces with new random blocks (bottom to top for Unity coordinates)"""
-        import random
-        new_blocks = []
 
-        for x in range(7):  # 7 columns
-            for y in range(8):  # bottom (0) → top (7)
+
+    def fill_empty_spaces(self) -> List[NewBlock]:
+        """Fill only the topmost empty spaces (highest y) with new random blocks.
+
+        Works with bottom-left coordinate system:
+        - Y=0 is bottom
+        - Fill starts from the top (y=height-1) downward
+        - Only fills consecutive empty cells at the top of each column
+        """
+        new_blocks = []
+        for x in range(self.width):
+            # count how many empty cells exist at top of this column
+            empty_streak = 0
+            for y in reversed(range(self.height)):  # start from top row
                 if self.board[y][x] == "Empty":
-                    color = random.choice([c.value for c in list(BlockColor)[:6]])
-                    self.board[y][x] = color
-                    new_blocks.append(NewBlock(
-                        pos=Position(x=x, y=y),
-                        value=color
-                    ))
+                    empty_streak += 1
+                else:
+                    break  # stop when hitting a non-empty block
+
+            # fill the top empty cells only
+            for i in range(empty_streak):
+                y = self.height - 1 - i
+                new_color = random.choice(list(BlockColor)).value
+                self.board[y][x] = new_color
+                new_blocks.append(NewBlock(pos=Position(x=x, y=y), value=new_color))
 
         return new_blocks
 

@@ -29,11 +29,13 @@ class UserInDB(UserBase):
     score: int = 0
     coins: int = 0  # Money for purchases
     lives: int = 5
-    
+
     # New reward system
     trophies: int = 0  # Ranking/league position
     stars: int = 0  # Total stars earned (for UI display)
-    
+
+    # Wheel system
+    wheel_last_spin: Optional[datetime] = None  # Last time user spun the wheel
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True
@@ -52,6 +54,7 @@ class UserResponse(UserBase):
     lives: int
     trophies: int
     stars: int
+    wheel_last_spin: Optional[datetime] = None
 
 
 class UserUpdate(BaseModel):
@@ -66,3 +69,4 @@ class UserUpdate(BaseModel):
     trophies: Optional[int] = None
     stars: Optional[int] = None
     last_login: Optional[datetime] = None
+    wheel_last_spin: Optional[datetime] = None

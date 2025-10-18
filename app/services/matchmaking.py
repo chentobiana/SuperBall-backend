@@ -56,63 +56,40 @@ class MatchmakingManager:
             fresh.append((uniq_id, name, joined_at))
         self._queue = fresh
 
-    async def try_match(self) -> Optional[Tuple[str, str, str]]:
-        """Match two queued players with active sockets.
-
-        Returns (game_session_id, p1_uniq_id, p2_uniq_id) if matched, else None.
-        """
+    async def try_match(self, initiator_id: Optional[str] = None):
         async with self._lock:
-            # Need at least two players in queue
             self._prune_queue_locked()
             if len(self._queue) < 2:
                 return None
 
-            # Find first pair that both have sockets connected
-            for i in range(len(self._queue)):
-                for j in range(i + 1, len(self._queue)):
-                    p1_id, p1_name, _ = self._queue[i]
-                    p2_id, p2_name, __ = self._queue[j]
+        for i in range(len(self._queue)):
+            for j in range(i + 1, len(self._queue)):
+                p1_id, p1_name, _ = self._queue[i]
+                p2_id, p2_name, __ = self._queue[j]
 
-                    if p1_id in self._connections and p2_id in self._connections:
-                        # Remove them from queue by indices (higher index first)
-                        self._queue.pop(j)
-                        self._queue.pop(i)
+                if p1_id in self._connections and p2_id in self._connections:
+                    # 🎯 אם היוזם הוא השחקן השני — נהפוך את הסדר
+                    if initiator_id and initiator_id == p2_id:
+                        p1_id, p1_name, p2_id, p2_name = p2_id, p2_name, p1_id, p1_name
 
-                        # Create actual game session in database
-                        try:
-                            game_session = await self._game_service.create_game_session(
-                                p1_id, p1_name, p2_id, p2_name
-                            )
-                            game_session_id = game_session.id or str(game_session._id)
-                        except Exception as e:
-                            # If game creation fails, put players back in queue
-                            self._queue.append((p1_id, p1_name))
-                            self._queue.append((p2_id, p2_name))
-                            return None
+                    # מוציאים את שני השחקנים מהתור
+                    self._queue.pop(j)
+                    self._queue.pop(i)
 
-                        # Send notifications outside the lock to avoid blocking others
-                        asyncio.create_task(
-                            self._notify_match(
-                                game_session_id,
-                                p1_id,
-                                p1_name,
-                                p2_id,
-                                p2_name,
-                                your_turn=True,  # Player 1 starts
-                            )
-                        )
-                        asyncio.create_task(
-                            self._notify_match(
-                                game_session_id,
-                                p2_id,
-                                p2_name,
-                                p1_id,
-                                p1_name,
-                                your_turn=False,  # Player 2 waits
-                            )
-                        )
+                    # יוצרים משחק חדש
+                    game_session = await self._game_service.create_game_session(
+                        p1_id, p1_name, p2_id, p2_name
+                    )
 
-                        return game_session_id, p1_id, p2_id
+                    # שולחים הודעות לשחקנים
+                    asyncio.create_task(
+                        self._notify_match(game_session.id, p1_id, p1_name, p2_id, p2_name, your_turn=True)
+                    )
+                    asyncio.create_task(
+                        self._notify_match(game_session.id, p2_id, p2_name, p1_id, p1_name, your_turn=False)
+                    )
+
+                    return game_session.id
 
             return None
 

@@ -1,4 +1,5 @@
 from typing import List, Tuple, Optional
+import random
 from datetime import datetime, timedelta
 from app.models.game import (
     GameSession, GameBoard, MoveResponse, GameStatus
@@ -42,7 +43,7 @@ class GameService:
             player2_id=player2_id,
             player1_name=player1_name,
             player2_name=player2_name,
-            current_player_id=player1_id,  # Player 1 starts
+            current_player_id=random.choice([player1_id, player2_id]),  # Randomly choose who starts
             board=board,
             status=GameStatus.IN_PROGRESS
         )

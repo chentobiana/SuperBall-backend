@@ -112,10 +112,10 @@ async def make_move(
 
 
 
-
 @router.get("/state/{game_id}")
 async def get_game_state(
     game_id: str,
+    uniqId: str,
     game_service: GameService = Depends(get_game_service)
 ):
     """Get current game state in structured format"""
@@ -124,6 +124,8 @@ async def get_game_state(
         if not game:
             raise HTTPException(status_code=404, detail="Game not found")
         
+        is_player1 = game.player1_id == uniqId
+
         # Pull rules from settings (with defaults)
         try:
             from app.config import settings
@@ -159,6 +161,7 @@ async def get_game_state(
                 "moves_left": game.player2_moves_left,
                 "bombs": game.player2_bombs,
             },
+            "isPlayer1": is_player1,
         }
     except Exception as e:
         logger.error(f"Error getting game state: {e}")

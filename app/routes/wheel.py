@@ -61,7 +61,7 @@ async def get_wheel_rewards(request: RewardsRequest, user_repo: UserRepository =
     next_spin_time = None
     remaining_hours = None
 
-    if user.wheel_last_spin:
+    if getattr(user, "wheel_last_spin", None):
         time_since_last_spin = current_time - user.wheel_last_spin
         if time_since_last_spin < timedelta(hours=SPIN_COOLDOWN_HOURS):
             can_spin = False

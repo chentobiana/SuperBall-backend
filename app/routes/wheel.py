@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timedelta
 import random
 import logging
@@ -19,9 +19,9 @@ SPIN_COOLDOWN_HOURS = 24
 class WheelRewardsResponse(BaseModel):
     rewards: List[int]
     can_spin: bool
-    next_spin_time: datetime = None
+    next_spin_time: Optional[datetime] = None
     current_time: datetime
-    remaining_hours: float = None
+    remaining_hours: Optional[float] = None
 
 
 class SpinRequest(BaseModel):
@@ -61,7 +61,7 @@ async def get_wheel_rewards(request: RewardsRequest, user_repo: UserRepository =
     next_spin_time = None
     remaining_hours = None
 
-    if getattr(user, "wheel_last_spin", None):
+    if user.wheel_last_spin:
         time_since_last_spin = current_time - user.wheel_last_spin
         if time_since_last_spin < timedelta(hours=SPIN_COOLDOWN_HOURS):
             can_spin = False

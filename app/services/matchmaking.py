@@ -84,10 +84,11 @@ class MatchmakingManager:
                                 p1_id, p1_name, p2_id, p2_name
                             )
                             game_session_id = game_session.id or str(game_session._id)
+                            starter_id = game_session.current_player_id
                         except Exception as e:
                             # If game creation fails, put players back in queue
-                            self._queue.append((p1_id, p1_name))
-                            self._queue.append((p2_id, p2_name))
+                            self._queue.append((p1_id, p1_name, monotonic()))
+                            self._queue.append((p2_id, p2_name, monotonic()))
                             return None
 
                         # Send notifications outside the lock to avoid blocking others
@@ -98,7 +99,7 @@ class MatchmakingManager:
                                 p1_name,
                                 p2_id,
                                 p2_name,
-                                your_turn=True,  
+                                your_turn=(p1_id == starter_id),
                             )
                         )
                         asyncio.create_task(
@@ -108,13 +109,14 @@ class MatchmakingManager:
                                 p2_name,
                                 p1_id,
                                 p1_name,
-                                your_turn=False,  
+                                your_turn=(p2_id == starter_id),
                             )
                         )
 
                         return game_session_id, p1_id, p2_id
 
             return None
+
 
     async def _notify_match(
         self,

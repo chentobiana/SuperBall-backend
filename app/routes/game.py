@@ -111,7 +111,6 @@ async def make_move(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
 @router.get("/state/{game_id}")
 async def get_game_state(
     game_id: str,
@@ -126,7 +125,6 @@ async def get_game_state(
         
         is_player1 = game.player1_id == uniqId
 
-        # Pull rules from settings (with defaults)
         try:
             from app.config import settings
             total_rounds = int(getattr(settings, "TOTAL_ROUNDS", 5))

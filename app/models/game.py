@@ -5,6 +5,10 @@ from enum import Enum
 
 
 class BlockColor(str, Enum):
+    """Block colors available in the game.
+
+    Includes standard colors and special blocks like bombs.
+    """
     PURPLE = "Purple"
     GREEN = "Green"
     BLUE = "Blue"
@@ -15,36 +19,56 @@ class BlockColor(str, Enum):
 
 
 class GameStatus(str, Enum):
+    """Game session status.
+
+    Values:
+        WAITING: Game created but not started
+        IN_PROGRESS: Game is being played
+        FINISHED: Game has ended
+    """
     WAITING = "waiting"
     IN_PROGRESS = "in_progress"
     FINISHED = "finished"
 
 
 class Position(BaseModel):
-    """Represents a position on the board (x, y)"""
+    """Represents a position on the board (x, y).
+
+    Used for tracking block positions and movements.
+    """
     x: int
     y: int
-    
+
     def to_list(self) -> List[int]:
+        """Convert position to [x, y] list format for client."""
         return [self.x, self.y]
 
 
 class BlockMove(BaseModel):
-    """Represents a block falling or moving"""
+    """Represents a block falling or moving.
+
+    Used to track block movements during gravity and cascades.
+    """
     from_pos: Position = Field(alias="from")
     to_pos: Position = Field(alias="to")
-    
+
     model_config = ConfigDict(populate_by_name=True)
 
 
 class NewBlock(BaseModel):
-    """Represents a new block that appears"""
+    """Represents a new block that appears.
+
+    Used when filling empty spaces after blocks are removed.
+    """
     pos: Position
     value: str
 
 
 class Player(BaseModel):
-    """Player in a game session"""
+    """Player in a game session.
+
+    Tracks player state including score, moves, and special items.
+    """
     uniq_id: str
     name: str
     score: int = 0
@@ -53,10 +77,16 @@ class Player(BaseModel):
 
 
 class GameBoard:
-    """Game board logic - 7x8 hexagonal grid (7 columns, 8 rows)
+    """Game board logic - 7x8 hexagonal grid (7 columns, 8 rows).
 
-    Board stores color names as strings (e.g., "purple", "green"). Empty cells
-    are marked as the string "Empty".
+    Handles board state and game mechanics including:
+    - Block matching and removal
+    - Gravity and block falling
+    - Board regeneration
+    - Bomb mechanics
+
+    Board stores color names as strings (e.g., "purple", "green").
+    Empty cells are marked as the string "Empty".
     """
     def __init__(self, board: Optional[List[List[str]]] = None):
         if board is None:
@@ -79,12 +109,11 @@ class GameBoard:
         self.board[2][2] = color
         self.board[2][3] = color
         self.board[2][4] = color
-    
+
     def get_neighbors(self, x: int, y: int) -> List[Tuple[int, int]]:
         """Get hexagonal neighbors for position (x,y)
         Note: 0,0 is bottom-left, hexagonal grid means 0,1 touches 1,0"""
         neighbors = []
-        
         # Standard adjacent positions
         directions = [
             (0, 1),   # up
@@ -92,7 +121,6 @@ class GameBoard:
             (1, 0),   # right
             (-1, 0),  # left
         ]
-        
         # Hexagonal connections - odd rows have different diagonal neighbors
         if y % 2 == 0:  # even row
             directions.extend([
@@ -104,30 +132,25 @@ class GameBoard:
                 (1, 1),   # up-right
                 (1, -1),  # down-right
             ])
-        
         for dx, dy in directions:
             new_x, new_y = x + dx, y + dy
             if 0 <= new_x < 7 and 0 <= new_y < 8:  # Updated for 7x8 board
                 neighbors.append((new_x, new_y))
-        
         return neighbors
-    
+
     def find_matches(self) -> List[List[Tuple[int, int]]]:
         """Find all groups of 3+ connected blocks of same color"""
         visited = set()
         matches = []
-        
         for y in range(8):  # Updated for 8 rows
             for x in range(7):  # Updated for 7 columns
                 if (x, y) not in visited:
                     color = self.board[y][x]
                     if color == "Empty":  # Empty space
                         continue
-                        
                     group = self._flood_fill(x, y, color, visited)
                     if len(group) >= 3:
                         matches.append(group)
-        
         return matches
 
     def has_possible_moves(self) -> bool:
@@ -137,59 +160,50 @@ class GameBoard:
     def regenerate_board(self) -> None:
         """Regenerate the board to ensure at least one possible move exists."""
         self._generate_board_with_moves()
-    
+
     def _flood_fill(self, x: int, y: int, color: str, visited: set) -> List[Tuple[int, int]]:
         """Flood fill to find connected blocks of same color"""
         if (x, y) in visited or self.board[y][x] != color:
             return []
-        
         visited.add((x, y))
         group = [(x, y)]
-        
         for nx, ny in self.get_neighbors(x, y):
             if (nx, ny) not in visited and self.board[ny][nx] == color:
                 group.extend(self._flood_fill(nx, ny, color, visited))
-        
         return group
-    
+
     def explode_blocks(self, positions: List[Tuple[int, int]]) -> None:
         """Remove blocks at given positions"""
         for x, y in positions:
             self.board[y][x] = "Empty"  # Unified empty sentinel
-    
+
     def apply_gravity(self) -> List[BlockMove]:
         """Apply gravity (bottom = y=0) and return list of moves made"""
         moves = []
-
         for x in range(7):  # 7 columns
             # Get all non-empty blocks in this column (bottom→top)
             column_blocks = []
             for y in range(8):
                 if self.board[y][x] != "Empty":
                     column_blocks.append((y, self.board[y][x]))
-
             # Clear the column
             for y in range(8):
                 self.board[y][x] = "Empty"
-
             # Place blocks at the bottom of the column (y starts from 0)
             for i, (old_y, color) in enumerate(column_blocks):
                 new_y = i  # lowest available spot (0 → up)
                 self.board[new_y][x] = color
-
                 if old_y != new_y:
                     moves.append(BlockMove(
                         from_pos=Position(x=x, y=old_y),
                         to_pos=Position(x=x, y=new_y)
                     ))
-
         return moves
-    
+
     def fill_empty_spaces(self) -> List[NewBlock]:
         """Fill empty spaces with new random blocks (bottom to top for Unity coordinates)"""
         import random
         new_blocks = []
-
         for x in range(7):  # 7 columns
             for y in range(8):  # bottom (0) → top (7)
                 if self.board[y][x] == "Empty":
@@ -199,12 +213,18 @@ class GameBoard:
                         pos=Position(x=x, y=y),
                         value=color
                     ))
-
         return new_blocks
 
 
 class GameState(BaseModel):
-    """Complete game state"""
+    """Complete game state.
+
+    Represents the full state of a game including:
+    - Player information and scores
+    - Board state
+    - Game status and round
+    - Timestamps
+    """
     id: Optional[str] = Field(None, alias="_id")
     player1: Player
     player2: Player
@@ -214,7 +234,7 @@ class GameState(BaseModel):
     status: GameStatus = GameStatus.WAITING
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True
@@ -222,7 +242,10 @@ class GameState(BaseModel):
 
 
 class MoveRequest(BaseModel):
-    """Request to make a move"""
+    """Request to make a move.
+
+    Contains the clicked position and player identification.
+    """
     x: int
     y: int
     game_id: str
@@ -230,7 +253,13 @@ class MoveRequest(BaseModel):
 
 
 class MoveResponse(BaseModel):
-    """Response after making a move"""
+    """Response after making a move.
+
+    Contains all information needed to update the client state:
+    - Score changes
+    - Board changes (explosions, falls, new blocks)
+    - Game state (round, moves left, game over)
+    """
     score_gained: int
     total_score: int
     round: int
@@ -245,10 +274,19 @@ class MoveResponse(BaseModel):
     winner: Optional[str] = None
     clicked_x: int  # The x coordinate that was clicked
     clicked_y: int  # The y coordinate that was clicked
-    
+
 
 class GameSession(BaseModel):
-    """Game session for database storage"""
+    """Game session for database storage.
+
+    Represents a game session with all its data:
+    - Player identities and names
+    - Game board state
+    - Player scores and resources
+    - Game progress (round, status)
+    - Turn management (moves left, deadline)
+    - Timestamps
+    """
     id: Optional[str] = Field(None, alias="_id")
     player1_id: str
     player2_id: str
@@ -268,7 +306,7 @@ class GameSession(BaseModel):
     current_turn_deadline: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True

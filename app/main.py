@@ -1,3 +1,8 @@
+"""
+Main application module for the SuperBall game backend.
+Configures FastAPI application, middleware, routes, and event handlers.
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database.connection import connect_to_mongo, close_mongo_connection
@@ -9,32 +14,32 @@ from app.routes.wheel import router as wheel_router
 from app.config import settings
 import logging
 
-# הגדרת logging
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# יצירת אפליקציית FastAPI
+# Initialize FastAPI application
 app = FastAPI(
     title="SuperBall Game Backend",
-    description="Backend API למשחק SuperBall - מערכת הרשמה והתחברות",
+    description="SuperBall Game Backend API - Authentication and Game Services",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
 
-# הגדרת CORS
+# Configure CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # בפרודקשן צריך להגביל את זה לדומיינים ספציפיים
+    allow_origins=["*"],  # TODO: Restrict to specific domains in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# רישום routes
+# Register route handlers
 app.include_router(auth_router)
 app.include_router(matchmaking_router)
 app.include_router(game_router)
@@ -44,7 +49,7 @@ app.include_router(wheel_router)
 
 @app.on_event("startup")
 async def startup_event():
-    """אירוע שמתרחש בעת הפעלת השרת"""
+    """Initialize server resources and establish database connection."""
     logger.info("Starting SuperBall Backend Server...")
     await connect_to_mongo()
     logger.info("Server started successfully!")
@@ -52,7 +57,7 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """אירוע שמתרחש בעת כיבוי השרת"""
+    """Clean up resources and close database connection on server shutdown."""
     logger.info("Shutting down SuperBall Backend Server...")
     await close_mongo_connection()
     logger.info("Server shutdown complete!")
@@ -60,7 +65,7 @@ async def shutdown_event():
 
 @app.get("/")
 async def root():
-    """נקודת כניסה בסיסית"""
+    """Root endpoint providing basic API information."""
     return {
         "message": "SuperBall Game Backend API",
         "version": "1.0.0",
@@ -71,7 +76,7 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """בדיקת בריאות השרת"""
+    """Health check endpoint for monitoring service status."""
     return {
         "status": "healthy",
         "database": "connected"

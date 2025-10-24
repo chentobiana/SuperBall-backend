@@ -1,7 +1,9 @@
+"""Game routes module for handling game state and moves."""
+
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
-from typing import Dict, List
 from app.models.game import MoveRequest, MoveResponse
 from app.services.game_service import GameService
+from app.core.websocket import manager
 import logging
 import json
 
@@ -10,62 +12,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/game", tags=["game"])
 
 
-# WebSocket connections manager
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, List[WebSocket]] = {}
-
-    async def connect(self, websocket: WebSocket, game_id: str):
-        await websocket.accept()
-        self.active_connections.setdefault(game_id, []).append(websocket)
-        logger.info(f"[WS] Player connected to game {game_id}. Total connections: {len(self.active_connections[game_id])}")
-
-    def disconnect(self, game_id: str):
-        if game_id in self.active_connections:
-            sockets = [ws for ws in self.active_connections[game_id] if not ws.client_state.name == "DISCONNECTED"]
-            before = len(self.active_connections[game_id])
-            if sockets:
-                self.active_connections[game_id] = sockets
-                after = len(sockets)
-                logger.info(f"[WS] Disconnected sockets cleaned for {game_id}. Before={before}, After={after}")
-            else:
-                del self.active_connections[game_id]
-                logger.info(f"[WS] All sockets disconnected from game {game_id}")
-
-    async def send_personal_message(self, message: dict, game_id: str):
-        """שולח הודעה לכל השחקנים המחוברים ל־game_id"""
-        if game_id in self.active_connections:
-            dead: List[WebSocket] = []
-            for ws in list(self.active_connections[game_id]):
-                try:
-                    await ws.send_text(json.dumps(message))
-                    logger.info(f"[WS] Sent message to game {game_id}: {message['type']}")
-                except Exception as e:
-                    logger.error(f"[WS] Failed to send to client in {game_id}: {e}")
-                    dead.append(ws)
-            # Cleanup
-            if dead:
-                self.active_connections[game_id] = [ws for ws in self.active_connections[game_id] if ws not in dead]
-                if not self.active_connections[game_id]:
-                    del self.active_connections[game_id]
-                logger.info(f"[WS] Cleaned up {len(dead)} dead sockets for game {game_id}")
-
-
-
-
-manager = ConnectionManager()
-
-
 def get_game_service():
     return GameService()
 
 
+def get_player_name(game, player_id: str) -> str:
+    """Get player name based on player ID."""
+    return game.player1_name if player_id == game.player1_id else game.player2_name
 
 
-## Note: Removed UX-only /initial-board. Clients should call /game/state/{game_id}.
-
-
-# Game creation is now handled by matchmaking service over WebSocket
+# Note: Game creation is handled by matchmaking service over WebSocket
 
 
 @router.post("/move", response_model=MoveResponse)
@@ -87,14 +43,13 @@ async def make_move(
             "type": "opponent_move",
             "data": response.model_dump()
         }, request.game_id)
-        
         # Also send turn update with scores (no money during game)
         game = await game_service.get_game_state(request.game_id)
         if game:
             await manager.send_personal_message({
                 "type": "turn_update",
                 "current_player_id": game.current_player_id,
-                "current_player_name": game.player1_name if game.current_player_id == game.player1_id else game.player2_name,
+                "current_player_name": get_player_name(game, game.current_player_id),
                 "round": game.round,
                 "player1_moves_left": game.player1_moves_left,
                 "player2_moves_left": game.player2_moves_left,
@@ -102,7 +57,6 @@ async def make_move(
                 "player2_score": game.player2_score,
                 "score_gained_this_turn": response.score_gained
             }, request.game_id)
-
         return response
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -122,7 +76,6 @@ async def get_game_state(
         game = await game_service.get_game_state(game_id)
         if not game:
             raise HTTPException(status_code=404, detail="Game not found")
-        
         is_player1 = game.player1_id == uniqId
 
         try:
@@ -192,7 +145,6 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                 # Try to parse incoming message
                 message = json.loads(data)
                 logger.info(f"[WS] Received message in game {game_id}: {message}")
-                
                 # Send back game state info instead of echo
                 game_service = get_game_service()
                 game = await game_service.get_game_state(game_id)
@@ -203,11 +155,10 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                         turn_seconds = int(getattr(settings, "TURN_SECONDS", 30))
                     except Exception:
                         turn_seconds = 30
-                    
                     response = {
                         "type": "game_status",
                         "current_player_id": game.current_player_id,
-                        "current_player_name": game.player1_name if game.current_player_id == game.player1_id else game.player2_name,
+                        "current_player_name": get_player_name(game, game.current_player_id),
                         "round": game.round,
                         "player1": {
                             "name": game.player1_name,
@@ -227,13 +178,11 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                     await websocket.send_text(json.dumps(response))
                 else:
                     await websocket.send_text(json.dumps({"type": "error", "message": "Game not found"}))
-                    
             except json.JSONDecodeError:
                 # If not valid JSON, send simple acknowledgment
                 await websocket.send_text(json.dumps({"type": "ack", "message": "Message received"}))
             except Exception as e:
                 logger.error(f"[WS] Error processing message in game {game_id}: {e}")
                 await websocket.send_text(json.dumps({"type": "error", "message": "Failed to process message"}))
-                
     except WebSocketDisconnect:
         manager.disconnect(game_id)

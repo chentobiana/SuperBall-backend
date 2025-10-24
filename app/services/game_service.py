@@ -105,10 +105,10 @@ class GameService:
         # Process the move (flip board back to internal format for processing)
         internal_board = [game.board[7-i] for i in range(8)]
         game_board = GameBoard(internal_board)
-        
+
         # Save original board for comparison
         original_board = [row[:] for row in game.board]
-        
+
         # Simulate clicking on the block - handle bombs specially
         # Convert coordinates back to internal format for processing
         internal_y = y  # server_y is already converted from frontend
@@ -121,7 +121,7 @@ class GameService:
             internal_y,
             clicked_color,
         )
-        
+
         # Check if clicked block is a bomb
         if clicked_color == "Bomb":
             # Convert Y for flipped board (so bomb works with inverted layout)
@@ -153,7 +153,7 @@ class GameService:
                 len(exploded_positions),
                 exploded_positions,
             )
-        
+
         if len(exploded_positions) < 3:
             # No valid match: do not consume move and do not switch turn
             logger.warning(
@@ -164,7 +164,7 @@ class GameService:
                 clicked_color,
                 len(exploded_positions),
             )
-            
+
             # Ensure there is at least one possible move; regenerate silently if needed
             board_regenerated = False
             # Convert to internal format for processing
@@ -202,7 +202,7 @@ class GameService:
                     winner = game.player2_name
                 else:
                     winner = "Tie"
-            
+
             return MoveResponse(
                 score_gained=0,
                 total_score=current_score,
@@ -219,7 +219,7 @@ class GameService:
                 clicked_x=x,
                 clicked_y=y,
             )
-        
+
         # Calculate score - special handling for bombs
         if clicked_color == "Bomb":
             # Bomb scoring: score_gained = _calculate_score(len(bomb_positions)) * 2
@@ -230,14 +230,14 @@ class GameService:
             score_gained = self._calculate_score(len(exploded_positions))
             # Check for bomb bonus (5+ blocks)
             bomb_bonus = len(exploded_positions) >= 5
-        
+
         # Apply explosions
         game_board.explode_blocks(exploded_positions)
-        
+
         if bomb_bonus:
             bomb_x, bomb_y = x, internal_y
             game_board.board[bomb_y][bomb_x] = "Bomb"
-            logger.info(f"💥 New Bomb created at ({bomb_x}, {bomb_y}) after {len(exploded_positions)}-block explosion.")
+            logger.info(f"New Bomb created at ({bomb_x}, {bomb_y}) after {len(exploded_positions)}-block explosion.")
             new_bombs = [{"pos": [bomb_x, bomb_y], "value": "Bomb"}]
         else:
             new_bombs = []
@@ -245,10 +245,10 @@ class GameService:
         # Apply gravity (after bomb already exists)
         fallen_moves = game_board.apply_gravity()
         new_blocks = game_board.fill_empty_spaces()
-                
+
         # Per new rules: do NOT auto-cascade. Only the clicked group explodes this turn.
         total_score_gained = score_gained
-        
+
         # Consume move now that a valid explosion occurred
         if game.player1_id == uniqId:
             game.player1_moves_left -= 1
@@ -268,7 +268,7 @@ class GameService:
             if bomb_bonus:
                 game.player2_bombs += 1
             current_score = game.player2_score
-        
+
         # Check if turn should switch (2 moves per player)
         if moves_left_after == 0:
             # Switch to other player
@@ -279,7 +279,7 @@ class GameService:
                 game.current_player_id = game.player1_id
                 game.player1_moves_left = 2
                 game.round += 1  # New round when it comes back to player 1
-                
+
                 # Check if game should end after 5 rounds
                 if game.round > 5:
                     game.status = GameStatus.FINISHED
@@ -290,10 +290,10 @@ class GameService:
                         winner = game.player2_name
                     else:
                         winner = "Tie"
-                    
+
                     # Process rewards for finished game
                     await self.finish_game(game.id)
-        
+
         # Reset/extend turn deadline for the (possibly new) current player
         try:
             from app.config import settings
@@ -301,7 +301,7 @@ class GameService:
         except Exception:
             turn_seconds = 30
         game.current_turn_deadline = datetime.utcnow() + timedelta(seconds=turn_seconds)
-        
+
         # Ensure next board has possible moves; regenerate if needed
         board_regenerated = False
         if not game_board.has_possible_moves():
@@ -310,7 +310,7 @@ class GameService:
 
         # Update board (flip to match frontend coordinates)
         game.board = [game_board.board[7-i] for i in range(8)]
-        
+
         # Save game state
         await self.game_repo.update_game(game_id, {
             "board": game.board,
@@ -324,7 +324,7 @@ class GameService:
             "round": game.round,
             "current_turn_deadline": game.current_turn_deadline,
         })
-        
+
         # Prepare response in the exact schema expected by the client
         # No coordinate conversion needed - board already uses frontend coordinates
         all_exploded = [[pos[0], pos[1]] for pos in exploded_positions]
@@ -336,7 +336,7 @@ class GameService:
             "pos": block.pos.to_list(),
             "value": block.value,
         } for block in new_blocks]
-        
+
         exploded_coords = set((pos[0], pos[1]) for pos in all_exploded)
         fallen_from_coords = set((move["from"][0], move["from"][1]) for move in all_fallen)
         overlap = exploded_coords.intersection(fallen_from_coords)
@@ -345,7 +345,7 @@ class GameService:
                 "IMPOSSIBLE: Block(s) %s appear in both exploded and fallen! This should never happen!",
                 overlap,
             )
-        
+
         if game.board == original_board:
             logger.error(
                 "CRITICAL: Board didn't change after successful move with %d explosions!",
@@ -353,7 +353,7 @@ class GameService:
             )
             logger.error("Original board: %s", original_board)
             logger.error("Final board: %s", game.board)
-        
+
         # Check if game is over
         game_over = game.status == GameStatus.FINISHED
         winner = None
@@ -364,7 +364,7 @@ class GameService:
                 winner = game.player2_name
             else:
                 winner = "Tie"
-        
+
         return MoveResponse(
             score_gained=total_score_gained,
             total_score=current_score,
@@ -381,12 +381,12 @@ class GameService:
             clicked_x=x,
             clicked_y=y,
         )
-    
+
     def _get_connected_blocks(self, game_board: GameBoard, x: int, y: int, color: str) -> List[Tuple[int, int]]:
         """Get all connected blocks of the same color using flood fill"""
         visited = set()
         return game_board._flood_fill(x, y, color, visited)
-    
+
     def _calculate_score(self, blocks_count: int) -> int:
         """Calculate score based on number of blocks exploded"""
         base_score = 10
@@ -399,7 +399,6 @@ class GameService:
         else:
             # 6+ blocks - exponential bonus
             return base_score * (blocks_count * 2)
-    
 
     def _settle_board(self, game_board: GameBoard):
         """Run gravity + refill + cascading matches until stable.
@@ -446,7 +445,7 @@ class GameService:
     async def get_player_games(self, uniqId: str) -> List[GameSession]:
         """Get all games for a player"""
         return await self.game_repo.find_by_player(uniqId, GameStatus.IN_PROGRESS)
-    
+
     async def finish_game(self, game_id: str) -> bool:
         """
         Finish a game and process rewards for both players
@@ -458,25 +457,25 @@ class GameService:
             if not game:
                 logger.error(f"Game {game_id} not found")
                 return False
-            
+
             # Mark game as finished
             await self.game_repo.update_game(game_id, {
                 "status": GameStatus.FINISHED,
                 "updated_at": datetime.utcnow()
             })
-            
+
             # Process rewards for both players
             player1_result, player2_result = await self.reward_service.process_game_result(
                 game_id=game_id,
                 player1_id=game.player1_id,
                 player2_id=game.player2_id
             )
-            
+
             if player1_result and player2_result:
                 logger.info(f"Successfully processed rewards for finished game {game_id}")
-                
+
                 # Send game over notification via WebSocket
-                from app.routes.game import manager
+                from app.core.websocket import manager
                 await manager.send_personal_message({
                     "type": "game_over",
                     "game_id": game_id,
@@ -499,12 +498,12 @@ class GameService:
                         "outcome": player2_result.outcome.value
                     }
                 }, game_id)
-                
+
                 return True
             else:
                 logger.error(f"Failed to process rewards for game {game_id}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"Error finishing game {game_id}: {e}")
             return False

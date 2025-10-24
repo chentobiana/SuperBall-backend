@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
 from typing import Dict, List, Tuple, Optional
 from time import monotonic
 
@@ -85,7 +84,7 @@ class MatchmakingManager:
                             )
                             game_session_id = game_session.id or str(game_session._id)
                             starter_id = game_session.current_player_id
-                        except Exception as e:
+                        except Exception:
                             # If game creation fails, put players back in queue
                             self._queue.append((p1_id, p1_name, monotonic()))
                             self._queue.append((p2_id, p2_name, monotonic()))
@@ -117,7 +116,6 @@ class MatchmakingManager:
 
             return None
 
-
     async def _notify_match(
         self,
         game_session_id: str,
@@ -130,7 +128,7 @@ class MatchmakingManager:
     ) -> None:
         """Notify a player that a match was found and include if they're player1 or player2."""
         try:
-            game = await self._game_service.get_game_by_id(game_session_id)
+            game = await self._game_service.get_game_state(game_session_id)
             is_player1 = game.player1_id == uniq_id
         except Exception:
             is_player1 = False

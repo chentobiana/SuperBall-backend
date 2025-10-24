@@ -1,3 +1,11 @@
+"""Wheel of Fortune routes for daily rewards.
+
+Handles the daily reward wheel system, including:
+- Reward configuration and cooldowns
+- Spinning the wheel and getting rewards
+- Checking spin availability
+"""
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
@@ -11,12 +19,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/wheel", tags=["wheel"])
 
+# Available rewards on the wheel (in coins)
 WHEEL_REWARDS = [100, 200, 300, 500, 1000, 2000, 5000, 10000]
 
+# Time between allowed spins (in hours)
 SPIN_COOLDOWN_HOURS = 24
 
 
 class WheelRewardsResponse(BaseModel):
+    """Response model for wheel rewards information.
+
+    Contains available rewards and spin availability status.
+    """
     rewards: List[int]
     can_spin: bool
     next_spin_time: Optional[datetime] = None
@@ -25,30 +39,50 @@ class WheelRewardsResponse(BaseModel):
 
 
 class SpinRequest(BaseModel):
+    """Request model for spinning the wheel."""
     uniqId: str
 
 
 class RewardsRequest(BaseModel):
+    """Request model for getting wheel rewards info."""
     uniqId: str
 
 
 class ResetSpinRequest(BaseModel):
+    """Request model for resetting spin timer (testing only)."""
     uniqId: str
 
 
 class SpinResponse(BaseModel):
+    """Response model for wheel spin results.
+
+    Contains the winning reward and updated player balance.
+    """
     winning_id: int
     reward: int
     next_spin_time: datetime
     new_balance: int
 
 
-def get_user_repo():
+def get_user_repo() -> UserRepository:
+    """Get user repository instance for dependency injection."""
     return UserRepository()
 
 
 @router.post("/rewards", response_model=WheelRewardsResponse)
 async def get_wheel_rewards(request: RewardsRequest, user_repo: UserRepository = Depends(get_user_repo)):
+    """Get wheel rewards information for a user.
+
+    Args:
+        request: Request containing user ID
+        user_repo: User repository for database access
+
+    Returns:
+        Available rewards and spin availability status
+
+    Raises:
+        HTTPException: If user not found
+    """
     logger.info(f"Getting wheel rewards for user: {request.uniqId}")
 
     user = await user_repo.find_by_unique_id(request.uniqId)
@@ -80,6 +114,18 @@ async def get_wheel_rewards(request: RewardsRequest, user_repo: UserRepository =
 
 @router.post("/spin", response_model=SpinResponse)
 async def spin_wheel(request: SpinRequest, user_repo: UserRepository = Depends(get_user_repo)):
+    """Spin the wheel to get a random reward.
+
+    Args:
+        request: Request containing user ID
+        user_repo: User repository for database access
+
+    Returns:
+        Spin result with reward and updated balance
+
+    Raises:
+        HTTPException: If user not found or spin cooldown active
+    """
     logger.info(f"Spin wheel request for user: {request.uniqId}")
 
     user = await user_repo.find_by_unique_id(request.uniqId)
@@ -134,7 +180,18 @@ async def spin_wheel(request: SpinRequest, user_repo: UserRepository = Depends(g
 
 @router.post("/reset")
 async def reset_spin_timer(request: ResetSpinRequest, user_repo: UserRepository = Depends(get_user_repo)):
-    """Reset the wheel spin timer for testing purposes"""
+    """Reset the wheel spin timer for testing purposes.
+
+    Args:
+        request: Request containing user ID
+        user_repo: User repository for database access
+
+    Returns:
+        Success message with user ID
+
+    Raises:
+        HTTPException: If user not found or update fails
+    """
     logger.info(f"Resetting spin timer for user: {request.uniqId}")
 
     user = await user_repo.find_by_unique_id(request.uniqId)

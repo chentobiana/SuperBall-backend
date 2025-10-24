@@ -1,3 +1,8 @@
+"""Authentication routes for user management.
+
+Handles user registration, login, and profile updates.
+"""
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from app.database.user_repository import UserRepository
@@ -9,12 +14,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
 
-def get_user_repo():
+def get_user_repo() -> UserRepository:
+    """Get user repository instance for dependency injection."""
     return UserRepository()
 
 
-# Define request and response models for login-or-register
 class LoginRequest(BaseModel):
+    """Request model for login or registration.
+
+    Supports both login and registration with optional display name.
+    """
     uniqId: str
     name: str | None = None
 
@@ -30,9 +39,23 @@ class LoginResponse(BaseModel):
 
 @router.post("/login-or-register", response_model=LoginResponse)
 async def login_or_register(user_data: LoginRequest, user_repo: UserRepository = Depends(get_user_repo)):
+    """Handle user login or registration.
+
+    If the user exists, updates last login time.
+    If not, creates a new user with the provided or generated name.
+
+    Args:
+        user_data: Login request with uniqId and optional name
+        user_repo: User repository for database operations
+
+    Returns:
+        User's uniqId and display name
+
+    Raises:
+        HTTPException: If database operations fail
+    """
     try:
         existing_user = await user_repo.find_by_unique_id(user_data.uniqId)
-
         if existing_user:
             await user_repo.update_last_login(user_data.uniqId)
             return {
@@ -48,13 +71,13 @@ async def login_or_register(user_data: LoginRequest, user_repo: UserRepository =
                 "uniqId": user_data.uniqId,
                 "name": new_user.name,
             }
-
     except Exception as e:
         logger.error(f"Error in login_or_register_unity: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 class UpdateNameRequest(BaseModel):
+    """Request model for updating player's display name."""
     uniqId: str
     name: str
 
@@ -63,7 +86,15 @@ class UpdateNameRequest(BaseModel):
 async def update_name(payload: UpdateNameRequest, user_repo: UserRepository = Depends(get_user_repo)):
     """Update player's display name.
 
-    If the user does not exist, returns 404. Name is trimmed and limited server-side if needed.
+    Args:
+        payload: Request containing uniqId and new name
+        user_repo: User repository for database operations
+
+    Returns:
+        Updated uniqId and name
+
+    Raises:
+        HTTPException: If user not found or name is invalid
     """
     try:
         if not payload.name or not payload.name.strip():
@@ -89,12 +120,22 @@ async def update_name(payload: UpdateNameRequest, user_repo: UserRepository = De
 
 @router.get("/user/{uniqId}", response_model=UserResponse)
 async def get_user_data(uniqId: str, user_repo: UserRepository = Depends(get_user_repo)):
-    """Get full user data including rewards"""
+    """Get full user data including rewards and stats.
+
+    Args:
+        uniqId: The unique ID of the user to fetch
+        user_repo: User repository for database operations
+
+    Returns:
+        Complete user profile with all stats and rewards
+
+    Raises:
+        HTTPException: If user not found or database error occurs
+    """
     try:
         user = await user_repo.find_by_unique_id(uniqId)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        
         return UserResponse(
             id=user.id,
             uniqId=user.uniqId,

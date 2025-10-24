@@ -9,46 +9,59 @@ logger = logging.getLogger(__name__)
 
 
 class RewardService:
-    """Service for managing game rewards and user progression"""
-    
+    """Service for managing game rewards and user progression.
+
+    Handles reward calculations and updates for:
+    - Game completion rewards (trophies, money, stars)
+    - Player progression tracking
+    - Reward simulation for testing
+    """
+
     def __init__(self):
         self.user_repo = None
         self.game_repo = None
-    
-    def _get_repos(self):
-        """Lazy initialization of repositories"""
+
+    def _get_repos(self) -> Tuple[UserRepository, GameRepository]:
+        """Get repository instances, initializing if needed.
+
+        Returns:
+            Tuple of (user_repo, game_repo)
+        """
         if self.user_repo is None:
             self.user_repo = UserRepository()
         if self.game_repo is None:
             self.game_repo = GameRepository()
         return self.user_repo, self.game_repo
-    
+
     async def process_game_result(self, game_id: str, player1_id: str,
                                   player2_id: str) -> Tuple[Optional[GameResult], Optional[GameResult]]:
-        """
-        Process game results and calculate rewards for both players
-        
+        """Process game results and calculate rewards for both players.
+
+        Args:
+            game_id: ID of the finished game
+            player1_id: ID of the first player
+            player2_id: ID of the second player
+
         Returns:
             Tuple of (player1_result, player2_result) or (None, None) if game not found
+
+        Note:
+            Updates player stats in the database with calculated rewards.
         """
         try:
             # Get repositories
             user_repo, game_repo = self._get_repos()
-            
             # Get game session
             game = await game_repo.find_by_id(game_id)
             if not game or game.status != GameStatus.FINISHED:
                 logger.warning(f"Game {game_id} not found or not finished")
                 return None, None
-            
             # Get both players' data
             player1 = await user_repo.find_by_unique_id(player1_id)
             player2 = await user_repo.find_by_unique_id(player2_id)
-            
             if not player1 or not player2:
                 logger.error(f"One or both players not found: {player1_id}, {player2_id}")
                 return None, None
-            
             # Calculate rewards for player 1
             player1_result = GameResult.calculate_rewards(
                 player_score=game.player1_score,
@@ -62,7 +75,6 @@ class RewardService:
             player1_result.player_name = player1.name
             player1_result.opponent_id = player2_id
             player1_result.opponent_name = player2.name
-            
             # Calculate rewards for player 2
             player2_result = GameResult.calculate_rewards(
                 player_score=game.player2_score,
@@ -76,7 +88,6 @@ class RewardService:
             player2_result.player_name = player2.name
             player2_result.opponent_id = player1_id
             player2_result.opponent_name = player1.name
-            
             # Apply rewards to both players
             await user_repo.update_rewards(
                 unique_id=player1_id,
@@ -84,38 +95,43 @@ class RewardService:
                 money_change=player1_result.money_gained,
                 stars_change=player1_result.stars_earned
             )
-            
             await user_repo.update_rewards(
                 unique_id=player2_id,
                 trophies_change=player2_result.trophies_gained,
                 money_change=player2_result.money_gained,
                 stars_change=player2_result.stars_earned
             )
-            
-            logger.info(f"Processed rewards for game {game_id}: "
-                       f"Player1: +{player1_result.trophies_gained} trophies, "
-                       f"+{player1_result.money_gained} money, "
-                       f"+{player1_result.stars_earned} stars")
-            
+            logger.info(
+                f"Processed rewards for game {game_id}: "
+                f"Player1: +{player1_result.trophies_gained} trophies, "
+                f"+{player1_result.money_gained} money, "
+                f"+{player1_result.stars_earned} stars"
+            )
             return player1_result, player2_result
-            
         except Exception as e:
             logger.error(f"Error processing game result for {game_id}: {e}")
             return None, None
-    
+
     async def get_game_result_for_player(self, game_id: str, player_id: str) -> Optional[GameResultResponse]:
-        """
-        Get game result response for a specific player
+        """Get game result response for a specific player.
+
+        Args:
+            game_id: ID of the game to get results for
+            player_id: ID of the player to get results for
+
+        Returns:
+            Game result with rewards or None if not found
+
+        Note:
+            Only returns results for finished games.
         """
         try:
             # Get repositories
             user_repo, game_repo = self._get_repos()
-            
             # Get game session
             game = await game_repo.find_by_id(game_id)
             if not game or game.status != GameStatus.FINISHED:
                 return None
-            
             # Determine which player this is
             if game.player1_id == player_id:
                 player_score = game.player1_score
@@ -130,12 +146,10 @@ class RewardService:
             else:
                 logger.warning(f"Player {player_id} not found in game {game_id}")
                 return None
-            
             # Get current player data
             player = await user_repo.find_by_unique_id(player_id)
             if not player:
                 return None
-            
             # Calculate rewards
             game_result = GameResult.calculate_rewards(
                 player_score=player_score,
@@ -149,17 +163,20 @@ class RewardService:
             game_result.player_name = player_name
             game_result.opponent_id = game.player1_id if game.player1_id != player_id else game.player2_id
             game_result.opponent_name = opponent_name
-            
             # Create response
             return GameResultResponse.from_game_result(game_result)
-            
         except Exception as e:
             logger.error(f"Error getting game result for player {player_id} in game {game_id}: {e}")
             return None
-    
+
     async def get_player_rewards(self, player_id: str) -> Optional[dict]:
-        """
-        Get current player rewards
+        """Get current player rewards.
+
+        Args:
+            player_id: ID of the player to get rewards for
+
+        Returns:
+            Dictionary with trophies, money, and stars or None if not found
         """
         try:
             user_repo, _ = self._get_repos()
@@ -167,12 +184,26 @@ class RewardService:
         except Exception as e:
             logger.error(f"Error getting player rewards for {player_id}: {e}")
             return None
-    
+
     async def simulate_game_rewards(self, player_score: int, opponent_score: int,
                                     current_trophies: int = 0, current_money: int = 0,
                                     current_stars: int = 0) -> GameResultResponse:
-        """
-        Simulate game rewards without updating database (for testing/preview)
+        """Simulate game rewards without updating database.
+
+        Used for testing and previewing reward calculations.
+
+        Args:
+            player_score: Player's final score
+            opponent_score: Opponent's final score
+            current_trophies: Player's current trophy count
+            current_money: Player's current money count
+            current_stars: Player's current star count
+
+        Returns:
+            Simulated game result with reward calculations
+
+        Raises:
+            Exception: If reward calculation fails
         """
         try:
             # Create temporary game result
@@ -183,16 +214,13 @@ class RewardService:
                 current_money=current_money,
                 current_stars=current_stars
             )
-            
             # Set dummy values
             game_result.game_id = "simulation"
             game_result.player_id = "simulation"
             game_result.player_name = "Player"
             game_result.opponent_id = "opponent"
             game_result.opponent_name = "Opponent"
-            
             return GameResultResponse.from_game_result(game_result)
-            
         except Exception as e:
             logger.error(f"Error simulating game rewards: {e}")
             raise

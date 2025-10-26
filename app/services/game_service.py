@@ -38,13 +38,17 @@ class GameService:
         temp_board = GameBoard().board
         board = [temp_board[7-i] for i in range(8)]  # Flip vertically
 
+        starter_id = random.choice([player1_id, player2_id])
+        
         game_session = GameSession(
             player1_id=player1_id,
             player2_id=player2_id,
             player1_name=player1_name,
             player2_name=player2_name,
-            current_player_id=random.choice([player1_id, player2_id]),  # Randomly choose who starts
+            current_player_id=starter_id,
             board=board,
+            player1_moves_left=2 if starter_id == player1_id else 0,
+            player2_moves_left=2 if starter_id == player2_id else 0,
             status=GameStatus.IN_PROGRESS
         )
 

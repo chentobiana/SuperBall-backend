@@ -4,8 +4,10 @@ Handles game result retrieval, reward calculations, and reward simulations.
 """
 
 from fastapi import APIRouter, HTTPException, Depends
+from typing import List
 from app.services.reward_service import RewardService
 from app.models.game_result import GameResultResponse
+from app.database.game_result_repository import GameResultRepository
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +18,11 @@ router = APIRouter(prefix="/rewards", tags=["rewards"])
 def get_reward_service() -> RewardService:
     """Get reward service instance for dependency injection."""
     return RewardService()
+
+
+def get_result_repository() -> GameResultRepository:
+    """Get game result repository instance for dependency injection."""
+    return GameResultRepository()
 
 
 @router.get("/game/{game_id}/result/{player_id}", response_model=GameResultResponse)
@@ -112,4 +119,58 @@ async def simulate_game_rewards(
         return result
     except Exception as e:
         logger.error(f"Error simulating game rewards: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/player/{player_id}/history", response_model=List[GameResultResponse])
+async def get_player_game_history(
+    player_id: str,
+    limit: int = 20,
+    result_repo: GameResultRepository = Depends(get_result_repository)
+):
+    """Get game history for a specific player.
+
+    Args:
+        player_id: ID of the player to get history for
+        limit: Maximum number of results to return (default 20)
+        result_repo: Game result repository for database access
+
+    Returns:
+        List of game results, sorted by creation time (newest first)
+
+    Raises:
+        HTTPException: If error occurs
+    """
+    try:
+        results = await result_repo.find_by_player_id(player_id, limit=limit)
+        # Convert to response format
+        responses = [GameResultResponse.from_game_result(result) for result in results]
+        return responses
+    except Exception as e:
+        logger.error(f"Error getting player game history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/player/{player_id}/stats")
+async def get_player_game_stats(
+    player_id: str,
+    result_repo: GameResultRepository = Depends(get_result_repository)
+):
+    """Get aggregated game statistics for a player.
+
+    Args:
+        player_id: ID of the player to get stats for
+        result_repo: Game result repository for database access
+
+    Returns:
+        Dictionary with wins, losses, ties, total games, and win rate
+
+    Raises:
+        HTTPException: If error occurs
+    """
+    try:
+        stats = await result_repo.get_player_stats(player_id)
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting player game stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -2,6 +2,7 @@ from typing import Optional, Tuple
 from app.models.game_result import GameResult, GameResultResponse
 from app.database.user_repository import UserRepository
 from app.database.game_repository import GameRepository
+from app.database.game_result_repository import GameResultRepository
 from app.models.game import GameStatus
 import logging
 
@@ -15,23 +16,27 @@ class RewardService:
     - Game completion rewards (trophies, money, stars)
     - Player progression tracking
     - Reward simulation for testing
+    - Saving game results to database
     """
 
     def __init__(self):
         self.user_repo = None
         self.game_repo = None
+        self.result_repo = None
 
-    def _get_repos(self) -> Tuple[UserRepository, GameRepository]:
+    def _get_repos(self) -> Tuple[UserRepository, GameRepository, GameResultRepository]:
         """Get repository instances, initializing if needed.
 
         Returns:
-            Tuple of (user_repo, game_repo)
+            Tuple of (user_repo, game_repo, result_repo)
         """
         if self.user_repo is None:
             self.user_repo = UserRepository()
         if self.game_repo is None:
             self.game_repo = GameRepository()
-        return self.user_repo, self.game_repo
+        if self.result_repo is None:
+            self.result_repo = GameResultRepository()
+        return self.user_repo, self.game_repo, self.result_repo
 
     async def process_game_result(self, game_id: str, player1_id: str,
                                   player2_id: str) -> Tuple[Optional[GameResult], Optional[GameResult]]:
@@ -46,11 +51,11 @@ class RewardService:
             Tuple of (player1_result, player2_result) or (None, None) if game not found
 
         Note:
-            Updates player stats in the database with calculated rewards.
+            Updates player stats in the database with calculated rewards and saves game results.
         """
         try:
             # Get repositories
-            user_repo, game_repo = self._get_repos()
+            user_repo, game_repo, result_repo = self._get_repos()
             # Get game session
             game = await game_repo.find_by_id(game_id)
             if not game or game.status != GameStatus.FINISHED:
@@ -88,6 +93,16 @@ class RewardService:
             player2_result.player_name = player2.name
             player2_result.opponent_id = player1_id
             player2_result.opponent_name = player1.name
+            
+            # Save game results to database
+            try:
+                await result_repo.save_result(player1_result)
+                await result_repo.save_result(player2_result)
+                logger.info(f"Saved game results to database for game {game_id}")
+            except Exception as e:
+                logger.error(f"Error saving game results to database: {e}")
+                # Continue even if saving fails - rewards should still be applied
+            
             # Apply rewards to both players
             await user_repo.update_rewards(
                 unique_id=player1_id,
@@ -123,11 +138,23 @@ class RewardService:
             Game result with rewards or None if not found
 
         Note:
-            Only returns results for finished games.
+            Only returns results for finished games. First tries to get from database,
+            falls back to calculating from game data if not found.
         """
         try:
             # Get repositories
-            user_repo, game_repo = self._get_repos()
+            user_repo, game_repo, result_repo = self._get_repos()
+            
+            # Try to get result from database first
+            results = await result_repo.find_by_game_id(game_id)
+            for result in results:
+                if result.player_id == player_id:
+                    logger.info(f"Found saved game result for player {player_id} in game {game_id}")
+                    return GameResultResponse.from_game_result(result)
+            
+            # If not found in database, calculate from game data (backward compatibility)
+            logger.info(f"Game result not found in database, calculating for player {player_id} in game {game_id}")
+            
             # Get game session
             game = await game_repo.find_by_id(game_id)
             if not game or game.status != GameStatus.FINISHED:
@@ -179,7 +206,7 @@ class RewardService:
             Dictionary with trophies, money, and stars or None if not found
         """
         try:
-            user_repo, _ = self._get_repos()
+            user_repo, _, _ = self._get_repos()
             return await user_repo.get_user_rewards(player_id)
         except Exception as e:
             logger.error(f"Error getting player rewards for {player_id}: {e}")

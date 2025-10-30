@@ -139,15 +139,12 @@ async def get_user_data(uniqId: str, user_repo: UserRepository = Depends(get_use
         return UserResponse(
             id=user.id,
             uniqId=user.uniqId,
+            name=user.name,
             created_at=user.created_at,
             last_login=user.last_login,
-            is_active=True,  # Assuming active if found
-            level=user.level,
-            score=user.score,
             coins=user.coins,
-            lives=user.lives,
             trophies=user.trophies,
-            stars=user.stars
+            wheel_last_spin=user.wheel_last_spin
         )
     except HTTPException:
         raise

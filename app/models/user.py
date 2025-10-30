@@ -24,18 +24,13 @@ class UserInDB(UserBase):
     last_login: Optional[datetime] = None
     name: str  # Player name (required field)
 
-    # Game data
-    level: int = 1
-    score: int = 0
+    # Game rewards (persistent data)
     coins: int = 0  # Money for purchases
-    lives: int = 5
-
-    # New reward system
     trophies: int = 0  # Ranking/league position
-    stars: int = 0  # Total stars earned (for UI display)
 
     # Wheel system
     wheel_last_spin: Optional[datetime] = None  # Last time user spun the wheel
+    
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True
@@ -47,26 +42,16 @@ class UserResponse(UserBase):
     id: str
     created_at: datetime
     last_login: Optional[datetime]
-    is_active: bool
-    level: int
-    score: int
+    name: str
     coins: int
-    lives: int
     trophies: int
-    stars: int
     wheel_last_spin: Optional[datetime] = None
 
 
 class UserUpdate(BaseModel):
     """Model for updating user data"""
     name: Optional[str] = None
-    username: Optional[str] = None
-    email: Optional[str] = None
-    level: Optional[int] = None
-    score: Optional[int] = None
     coins: Optional[int] = None
-    lives: Optional[int] = None
     trophies: Optional[int] = None
-    stars: Optional[int] = None
     last_login: Optional[datetime] = None
     wheel_last_spin: Optional[datetime] = None

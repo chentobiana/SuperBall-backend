@@ -72,8 +72,7 @@ class RewardService:
                 player_score=game.player1_score,
                 opponent_score=game.player2_score,
                 current_trophies=player1.trophies,
-                current_money=player1.coins,
-                current_stars=player1.stars
+                current_money=player1.coins
             )
             player1_result.game_id = game_id
             player1_result.player_id = player1_id
@@ -85,8 +84,7 @@ class RewardService:
                 player_score=game.player2_score,
                 opponent_score=game.player1_score,
                 current_trophies=player2.trophies,
-                current_money=player2.coins,
-                current_stars=player2.stars
+                current_money=player2.coins
             )
             player2_result.game_id = game_id
             player2_result.player_id = player2_id
@@ -182,8 +180,7 @@ class RewardService:
                 player_score=player_score,
                 opponent_score=opponent_score,
                 current_trophies=player.trophies,
-                current_money=player.coins,
-                current_stars=player.stars
+                current_money=player.coins
             )
             game_result.game_id = game_id
             game_result.player_id = player_id

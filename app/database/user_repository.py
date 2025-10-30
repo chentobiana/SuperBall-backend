@@ -122,18 +122,14 @@ class UserRepository:
 
     async def get_user_stats(self, unique_id: str) -> Optional[dict]:
         """
-        Returns user statistics
+        Returns user statistics (coins and trophies)
         """
         try:
             user = await self.find_by_unique_id(unique_id)
             if user:
                 return {
-                    "level": user.level,
-                    "score": user.score,
                     "coins": user.coins,
-                    "lives": user.lives,
-                    "trophies": user.trophies,
-                    "stars": user.stars
+                    "trophies": user.trophies
                 }
             return None
         except Exception as e:
@@ -141,9 +137,17 @@ class UserRepository:
             raise
 
     async def update_rewards(self, unique_id: str, trophies_change: int,
-                             money_change: int, stars_change: int) -> Optional[UserInDB]:
+                             money_change: int) -> Optional[UserInDB]:
         """
-        Update user rewards (trophies, money, stars)
+        Update user rewards (trophies and coins only)
+        
+        Args:
+            unique_id: User's unique ID
+            trophies_change: Amount to add/subtract from trophies (can be negative)
+            money_change: Amount to add to coins (usually positive)
+        
+        Returns:
+            Updated user object or None if user not found
         """
         try:
             # Get current user data
@@ -153,8 +157,7 @@ class UserRepository:
             
             # Calculate new values
             new_trophies = max(0, user.trophies + trophies_change)  # Don't go below 0
-            new_money = user.coins + money_change
-            new_stars = user.stars + stars_change
+            new_coins = user.coins + money_change
             
             # Update in database
             result = await self.collection.update_one(
@@ -164,8 +167,7 @@ class UserRepository:
                 ]},
                 {"$set": {
                     "trophies": new_trophies,
-                    "coins": new_money,
-                    "stars": new_stars,
+                    "coins": new_coins,
                     "updated_at": datetime.utcnow()
                 }}
             )
@@ -181,15 +183,14 @@ class UserRepository:
 
     async def get_user_rewards(self, unique_id: str) -> Optional[dict]:
         """
-        Get user rewards data
+        Get user rewards data (coins and trophies)
         """
         try:
             user = await self.find_by_unique_id(unique_id)
             if user:
                 return {
                     "trophies": user.trophies,
-                    "coins": user.coins,
-                    "stars": user.stars
+                    "coins": user.coins
                 }
             return None
         except Exception as e:

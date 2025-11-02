@@ -1,176 +1,158 @@
-# SuperBall Game Backend
+# 🎮 SuperBall Game Backend
 
-Backend API למשחק SuperBall בסגנון Candy Crush, כולל מערכת הרשמה והתחברות אוטומטית.
+Backend API למשחק SuperBall - משחק פאזל מרובה משתתפים בזמן אמת.
 
-## תכונות
+## ✨ תכונות עיקריות
 
-- 🔐 מערכת הרשמה והתחברות אוטומטית
-- 🗄️ אחסון נתונים ב-MongoDB
-- 🎮 ניהול נתוני משחק (רמה, ניקוד, מטבעות, חיים)
-- 📊 API מלא עם תיעוד אוטומטי
-- 🚀 FastAPI עם ביצועים גבוהים
+- 👥 **ניהול משתמשים** - רישום, התחברות, מעקב אחר טרופיים ומטבעות
+- 🎮 **מערכת משחק מלאה** - משחקים בין 2 שחקנים, 5 סיבובים, חישוב ניקוד אוטומטי
+- 🔄 **Matchmaking** - חיפוש יריבים אוטומטי
+- 💰 **מערכת תגמולים** - טרופיים, מטבעות, כוכבים + היסטוריה מלאה
+- 🎡 **גלגל מזל** - סיבוב יומי לפרסים
+- 🌐 **WebSocket** - עדכונים בזמן אמת
+- 🗄️ **MongoDB** - שמירת כל הנתונים (משתמשים, משחקים, תוצאות)
+- 📊 **API מלא** - תיעוד אינטראקטיבי עם Swagger
+- 🚀 **FastAPI** - ביצועים גבוהים ו-async
 
-## התקנה
+## 🚀 התקנה מהירה
 
 ### דרישות מוקדמות
+- Python 3.9+
+- MongoDB 4.4+
 
-1. Python 3.8+
-2. MongoDB (מקומי או cloud)
+### צעדי התקנה
 
-### שלבי התקנה
+1. **צור סביבה וירטואלית:**
+```bash
+python -m venv venv
 
-1. **התקנת dependencies:**
+# Windows
+venv\Scripts\activate
+
+# Linux/macOS
+source venv/bin/activate
+```
+
+2. **התקן תלויות:**
 ```bash
 pip install -r requirements.txt
 ```
 
-2. **הגדרת משתני סביבה:**
-   - העתק את `env_example.txt` ל-`.env`
-   - ערוך את הקובץ `.env` עם הנתונים שלך:
-
-```env
-# MongoDB Configuration
-MONGODB_URL=mongodb://localhost:27017
-DATABASE_NAME=superball_game
-
-# JWT Configuration
-SECRET_KEY=your-secret-key-here
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# Server Configuration
-HOST=0.0.0.0
-PORT=8000
-```
-
-3. **הפעלת השרת:**
+3. **הרץ את השרת:**
 ```bash
 python run.py
 ```
 
-או:
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+4. **בדוק שהכל עובד:**
+- פתח דפדפן: http://localhost:8000/docs
+- אמור לראות את תיעוד ה-API
 
-## שימוש
+### 📖 התקנה מפורטת
+לתיעוד התקנה מפורט (כולל התקנת MongoDB), ראה: **[INSTALLATION.md](INSTALLATION.md)**
 
-### נקודות API עיקריות
+## 📚 API Endpoints
 
-#### 1. התחברות/הרשמה אוטומטית
-```http
-POST /auth/login-or-register
-Content-Type: application/json
+### Authentication (`/auth`)
+- `POST /auth/register` - רישום משתמש חדש
+- `GET /auth/user/{uniqId}` - קבלת נתוני משתמש
 
-{
-    "unique_id": "player_12345",
-    "username": "שם_משתמש_אופציונלי",
-    "email": "email@example.com"
-}
-```
+### Game (`/game`)
+- `POST /game/create` - יצירת משחק חדש
+- `POST /game/{game_id}/move` - ביצוע מהלך
+- `GET /game/{game_id}/state` - קבלת מצב משחק
+- `WebSocket /game/{game_id}/ws/{uniqId}` - עדכונים בזמן אמת
 
-**תגובה עבור משתמש חדש:**
-```json
-{
-    "message": "הרשמה בוצעה בהצלחה",
-    "action": "register",
-    "is_new_user": true,
-    "user": {
-        "id": "...",
-        "unique_id": "player_12345",
-        "username": "שם_משתמש_אופציונלי",
-        "level": 1,
-        "score": 0,
-        "coins": 0,
-        "lives": 5,
-        "created_at": "2024-01-01T12:00:00",
-        "is_active": true
-    }
-}
-```
+### Matchmaking (`/matchmaking`)
+- `POST /matchmaking/join` - הצטרפות לתור חיפוש יריב
+- `POST /matchmaking/cancel` - ביטול חיפוש
 
-**תגובה עבור משתמש קיים:**
-```json
-{
-    "message": "התחברות בוצעה בהצלחה",
-    "action": "login",
-    "is_new_user": false,
-    "user": {
-        // נתוני המשתמש הקיים
-    }
-}
-```
+### Rewards (`/rewards`)
+- `GET /rewards/player/{player_id}/history` - היסטוריית משחקים
+- `GET /rewards/player/{player_id}/stats` - סטטיסטיקות (wins, losses, win rate)
+- `GET /rewards/player/{player_id}/rewards` - תגמולים נוכחיים
 
-#### 2. קבלת נתוני משתמש
-```http
-GET /auth/user/{unique_id}
-```
+### Wheel (`/wheel`)
+- `POST /wheel/spin` - סיבוב גלגל מזל
+- `POST /wheel/reset-timer` - איפוס טיימר (מנהל)
 
-#### 3. עדכון נתוני משתמש
-```http
-PUT /auth/user/{unique_id}
-Content-Type: application/json
-
-{
-    "level": 5,
-    "score": 1500,
-    "coins": 100,
-    "lives": 3
-}
-```
-
-#### 4. קבלת סטטיסטיקות משתמש
-```http
-GET /auth/user/{unique_id}/stats
-```
-
-### תיעוד API
-
-לאחר הפעלת השרת, ניתן לגשת לתיעוד האינטראקטיבי:
+### 📖 תיעוד מלא
 - **Swagger UI:** http://localhost:8000/docs
 - **ReDoc:** http://localhost:8000/redoc
 
-## מבנה הפרויקט
+## 📁 מבנה הפרויקט
 
 ```
 SuperBall-Backend/
 ├── app/
-│   ├── __init__.py
-│   ├── main.py              # קובץ ראשי של האפליקציה
-│   ├── config.py            # הגדרות ומשתני סביבה
-│   ├── models/              # מודלים של הנתונים
-│   │   ├── __init__.py
-│   │   └── user.py
-│   ├── database/            # חיבור ומניפולציה של מסד הנתונים
-│   │   ├── __init__.py
+│   ├── main.py                      # אפליקציית FastAPI
+│   ├── config.py                    # הגדרות
+│   ├── database/                    # Repositories
 │   │   ├── connection.py
-│   │   └── user_repository.py
-│   └── routes/              # נתיבי API
-│       ├── __init__.py
-│       └── auth.py
-├── requirements.txt         # dependencies
-├── env_example.txt         # דוגמה למשתני סביבה
-├── run.py                  # קובץ הפעלה
-└── README.md
+│   │   ├── user_repository.py
+│   │   ├── game_repository.py
+│   │   └── game_result_repository.py
+│   ├── models/                      # מודלים
+│   │   ├── user.py
+│   │   ├── game.py
+│   │   └── game_result.py
+│   ├── routes/                      # API endpoints
+│   │   ├── auth.py
+│   │   ├── game.py
+│   │   ├── matchmaking.py
+│   │   ├── rewards.py
+│   │   └── wheel.py
+│   ├── services/                    # לוגיקה עסקית
+│   │   ├── game_service.py
+│   │   ├── matchmaking.py
+│   │   └── reward_service.py
+│   └── core/
+│       └── websocket.py             # WebSocket manager
+├── requirements.txt
+├── run.py
+├── README.md                        # הקובץ הזה
+├── README_HE.md                     # README בעברית
+└── INSTALLATION.md                  # הוראות התקנה מפורטות
 ```
 
-## לוגיקת ההרשמה/התחברות
+## 🎮 כללי המשחק
 
-1. **המשחק שולח unique_id** של השחקן לשרת
-2. **השרת בודק** האם המשתמש קיים במסד הנתונים
-3. **אם קיים:** מתחבר ומעדכן last_login
-4. **אם לא קיים:** יוצר משתמש חדש אוטומטית
-5. **מחזיר** את נתוני המשתמש למשחק
+### מבנה המשחק:
+- **5 סיבובים** בכל משחק
+- **2 מהלכים** לכל שחקן בכל תור
+- **לוח 7×8** עם 6 צבעים שונים
+- **ניקוד**: 3 בלוקים = 30, 4 = 60, 5 = 100, 6+ = בונוס
 
-## פיתוח נוסף
+### תגמולים:
+- **ניצחון**: +50 טרופיים
+- **הפסד**: -50 טרופיים
+- **מטבעות**: 10% מהניקוד
+- **כוכבים**: 1-3 לפי ביצועים
 
-הבקאנד מוכן להרחבה עם:
-- 🎯 מערכת משימות ואתגרים
-- 🏆 לוח תוצאות
-- 💰 חנות פריטים
-- 👥 מערכת חברים
-- 📈 אנליטיקס ומעקב
+## 🗄️ Database
 
-## תמיכה
+המערכת משתמשת ב-MongoDB עם 3 collections:
+- **`users`** - משתמשים (trophies, coins)
+- **`game_sessions`** - משחקים פעילים וגמורים
+- **`game_results`** - היסטוריית משחקים ותוצאות
 
-לשאלות או בעיות, פנה למפתח הפרויקט.
+## 🛠️ טכנולוגיות
+
+- **FastAPI** - Web framework
+- **Motor** - MongoDB async driver
+- **Pydantic** - Data validation
+- **WebSockets** - Real-time communication
+- **Uvicorn** - ASGI server
+
+## 📖 תיעוד נוסף
+
+- **[INSTALLATION.md](INSTALLATION.md)** - הוראות התקנה מפורטות (באנגלית)
+- **[README_HE.md](README_HE.md)** - README מלא בעברית
+- **API Docs** - http://localhost:8000/docs (אחרי הרצת השרת)
+
+## 🎓 למרצה
+
+המערכת מוכנה להרצה ומלאה בתכונות. לתיעוד התקנה מפורט, ראה **[INSTALLATION.md](INSTALLATION.md)**
+
+---
+
+**בהצלחה! 🚀**

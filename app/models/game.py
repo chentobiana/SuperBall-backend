@@ -302,8 +302,6 @@ class GameSession(BaseModel):
     player2_bombs: int = 0
     round: int = 1
     status: GameStatus = GameStatus.IN_PROGRESS
-    # Timers
-    current_turn_deadline: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

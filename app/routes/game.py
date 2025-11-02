@@ -82,9 +82,8 @@ async def get_game_state(
             from app.config import settings
             total_rounds = int(getattr(settings, "TOTAL_ROUNDS", 5))
             turns_per_round = int(getattr(settings, "TURNS_PER_ROUND", 2))
-            turn_seconds = int(getattr(settings, "TURN_SECONDS", 30))
         except Exception:
-            total_rounds, turns_per_round, turn_seconds = 5, 2, 30
+            total_rounds, turns_per_round = 5, 2
 
         return {
             "game_id": game_id,
@@ -97,10 +96,8 @@ async def get_game_state(
             "round": game.round,
             "rules": {
                 "total_rounds": total_rounds,
-                "turns_per_round": turns_per_round,
-                "turn_seconds": turn_seconds,
+                "turns_per_round": turns_per_round
             },
-            "current_turn_deadline": game.current_turn_deadline,
             "board": game.board,
             "player1": {
                 "score": game.player1_score,
@@ -149,12 +146,6 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                 game_service = get_game_service()
                 game = await game_service.get_game_state(game_id)
                 if game:
-                    # Pull rules from settings
-                    try:
-                        from app.config import settings
-                        turn_seconds = int(getattr(settings, "TURN_SECONDS", 30))
-                    except Exception:
-                        turn_seconds = 30
                     response = {
                         "type": "game_status",
                         "current_player_id": game.current_player_id,
@@ -171,9 +162,7 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
                             "score": game.player2_score,
                             "moves_left": game.player2_moves_left,
                             "bombs": game.player2_bombs
-                        },
-                        "turn_deadline": game.current_turn_deadline.isoformat() if game.current_turn_deadline else None,
-                        "turn_seconds": turn_seconds
+                        }
                     }
                     await websocket.send_text(json.dumps(response))
                 else:

@@ -52,14 +52,6 @@ class GameService:
             status=GameStatus.IN_PROGRESS
         )
 
-        # Initialize first turn deadline (default 30s if not configured)
-        try:
-            from app.config import settings
-            turn_seconds = int(getattr(settings, "TURN_SECONDS", 30))
-        except Exception:
-            turn_seconds = 30
-        game_session.current_turn_deadline = datetime.utcnow() + timedelta(seconds=turn_seconds)
-
         return await self.game_repo.create_game(game_session)
 
     async def make_move(self, game_id: str, uniqId: str, x: int, y: int) -> MoveResponse:
@@ -298,14 +290,6 @@ class GameService:
                     # Process rewards for finished game
                     await self.finish_game(game.id)
 
-        # Reset/extend turn deadline for the (possibly new) current player
-        try:
-            from app.config import settings
-            turn_seconds = int(getattr(settings, "TURN_SECONDS", 30))
-        except Exception:
-            turn_seconds = 30
-        game.current_turn_deadline = datetime.utcnow() + timedelta(seconds=turn_seconds)
-
         # Ensure next board has possible moves; regenerate if needed
         board_regenerated = False
         if not game_board.has_possible_moves():
@@ -325,8 +309,7 @@ class GameService:
             "player1_bombs": game.player1_bombs,
             "player2_bombs": game.player2_bombs,
             "current_player_id": game.current_player_id,
-            "round": game.round,
-            "current_turn_deadline": game.current_turn_deadline,
+            "round": game.round
         })
 
         # Prepare response in the exact schema expected by the client
@@ -403,44 +386,6 @@ class GameService:
         else:
             # 6+ blocks - exponential bonus
             return base_score * (blocks_count * 2)
-
-    def _settle_board(self, game_board: GameBoard):
-        """Run gravity + refill + cascading matches until stable.
-
-        Returns: (fallen_moves, new_blocks, cascaded_explosions, cascaded_fallen, cascaded_new_blocks, cascade_score)
-        """
-        # First gravity + refill after the initial explosion
-        fallen_moves = game_board.apply_gravity()
-        new_blocks = game_board.fill_empty_spaces()
-
-        cascaded_explosions = []
-        cascaded_fallen = []
-        cascaded_new_blocks = []
-        cascade_score = 0
-
-        while True:
-            matches = game_board.find_matches()
-            if not matches:
-                break
-            all_match_positions = []
-            for match in matches:
-                all_match_positions.extend(match)
-            cascaded_explosions.extend([[pos[0], pos[1]] for pos in all_match_positions])
-            game_board.explode_blocks(all_match_positions)
-            cascade_score += self._calculate_score(len(all_match_positions))
-            cascade_fallen = game_board.apply_gravity()
-            cascaded_fallen.extend(cascade_fallen)
-            cascade_new = game_board.fill_empty_spaces()
-            cascaded_new_blocks.extend(cascade_new)
-
-        return (
-            fallen_moves,
-            new_blocks,
-            cascaded_explosions,
-            cascaded_fallen,
-            cascaded_new_blocks,
-            cascade_score,
-        )
 
     async def get_game_state(self, game_id: str) -> Optional[GameSession]:
         """Get current game state"""

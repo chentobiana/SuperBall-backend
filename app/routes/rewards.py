@@ -81,47 +81,6 @@ async def get_player_rewards(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/simulate")
-async def simulate_game_rewards(
-    player_score: int,
-    opponent_score: int,
-    current_trophies: int = 0,
-    current_money: int = 0,
-    current_stars: int = 0,
-    reward_service: RewardService = Depends(get_reward_service)
-):
-    """Simulate game rewards without updating database.
-
-    Used for testing and previewing reward calculations.
-
-    Args:
-        player_score: Player's final score
-        opponent_score: Opponent's final score
-        current_trophies: Player's current trophy count
-        current_money: Player's current money count
-        current_stars: Player's current star count
-        reward_service: Reward service for calculations
-
-    Returns:
-        Simulated game result with reward calculations
-
-    Raises:
-        HTTPException: If simulation fails
-    """
-    try:
-        result = await reward_service.simulate_game_rewards(
-            player_score=player_score,
-            opponent_score=opponent_score,
-            current_trophies=current_trophies,
-            current_money=current_money,
-            current_stars=current_stars
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Error simulating game rewards: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/player/{player_id}/history", response_model=List[GameResultResponse])
 async def get_player_game_history(
     player_id: str,

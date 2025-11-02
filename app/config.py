@@ -25,7 +25,6 @@ class Settings:
         GAME_SESSIONS_COLLECTION: Name of the game sessions collection
         TOTAL_ROUNDS: Number of rounds per game
         TURNS_PER_ROUND: Number of turns per round
-        TURN_SECONDS: Time limit per turn in seconds
     """
     # MongoDB Configuration
     MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
@@ -47,7 +46,6 @@ class Settings:
     # Game Rules
     TOTAL_ROUNDS: int = int(os.getenv("TOTAL_ROUNDS", "5"))
     TURNS_PER_ROUND: int = int(os.getenv("TURNS_PER_ROUND", "2"))
-    TURN_SECONDS: int = int(os.getenv("TURN_SECONDS", "30"))
 
 
 settings = Settings()
